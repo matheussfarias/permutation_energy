@@ -1,0 +1,5 @@
+MNIST/data/
+CIFAR/data/
+
+MNIST/pretrained/
+CIFAR/pretrained/
