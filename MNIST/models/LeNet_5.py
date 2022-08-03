@@ -40,7 +40,6 @@ class LeNet_5(nn.Module):
     def forward(self, x):
         """Forward propagation procedure"""
         exp_x = self.conv1(x)
-
         A,B = preprocessing(x, self.conv1.weight)
         result = torch.matmul(A,B)
         partial_result = result
@@ -51,7 +50,7 @@ class LeNet_5(nn.Module):
         for i in range(partial_result.shape[0]):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value = cim(A[i].detach(), B.detach(), 1, 12, 12, 6, permutation = 'sorted', prints=False)
+            result, valor, energy_value = cim(A[i].detach(), B.detach(), 1, 12, 12, 6, permutation = 'sorted', prints=False, gaussian_approximation=False, len_section=1)
             f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
