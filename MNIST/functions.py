@@ -1,6 +1,8 @@
+from tkinter import E
 import numpy as np
 import torch
 import time
+from prettytable import PrettyTable
 
 global device
 
@@ -11,12 +13,30 @@ if cuda_act == True:
 else:
     device = torch.device('cpu')
 
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    modules=0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad: continue
+        params = parameter.numel()
+        table.add_row([name, params])
+        total_params+=params
+        modules+=1
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    print(f"Total Number of Trainable Modules: {modules}")
+    return total_params
+
 def compute_tiles_nn(A, B, B_signs, t):
     tiles = [0]
     M = A.shape[0]
     K = A.shape[1]
     N = B.shape[1]
     q = B.shape[2]
+
+    
+    
     ans = torch.zeros(M,N,q).to(device)
     if t != "random":
         B_temp = []
@@ -29,6 +49,7 @@ def compute_tiles_nn(A, B, B_signs, t):
                 B_temp.append((temp_row,B[i][j],(i,j),torch.sum(B[i][j])))
                 A_temp.append((A[:,i],(i,j)))
         
+
         if t == "sorted":
             B_temp.sort(key=sorting_order)
         if t == "area":
@@ -46,15 +67,16 @@ def compute_tiles_nn(A, B, B_signs, t):
             for k in range(N):
                 B_new.append(torch.FloatTensor(B.cpu()[indeces[i+k*K][0], indeces[i+k*K][1]]).to(device))
                 B_signs_new.append(torch.IntTensor(B_signs.cpu()[indeces[i+k*K][0], indeces[i+k*K][1]]).to(device))
-
+        
         for i in range(len(indeces)):
             A_new.append(torch.FloatTensor(A.cpu()[:, indeces[i][0]]).to(device))
         A_new = torch.stack(A_new).to(device)
         A_final = []
         for i in range(int(len(A_new)/K)):
             A_final.append(A_new[i*K:(i+1)*K].t())
-        
+    
         A_final = torch.stack(A_final)
+        
         B_new = torch.stack(B_new).reshape(B.shape)
         B_signs_new = torch.stack(B_signs_new).reshape(B_signs.shape)
 
@@ -77,6 +99,7 @@ def compute_tiles_nn(A, B, B_signs, t):
 
         results_pims = []
         results_pims_final = []
+
         for j in range (N):
             for i in range(K):
                 results_pims.append(torch.outer(A_final[j][:,i], B_pim_signed[j][i]))
@@ -125,7 +148,7 @@ def compute_tiles_nn(A, B, B_signs, t):
         
     return tiles, B_pim_signed, A_final, mean_temp
 
-def adc(A, B_digital, C_correct, v_ref, b, permutation, gaussian_approximation, len_section):
+def adc(A, B_digital, C_correct, v_ref, b, permutation):
     N = B_digital.shape[0]
     K = B_digital.shape[1]
     q = B_digital.shape[2]
@@ -134,9 +157,9 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, gaussian_approximation, 
     if permutation=='random':
         M = A.shape[0]
 
-        max_outputs_1 = max_normal(A, B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section)
-        max_outputs_2 = max_pos(A, B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section)
-        max_outputs_3 = max_neg(A, B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section)
+        max_outputs_1 = max_normal(A, B_digital, M, K, N, q, permutation, v_ref)
+        max_outputs_2 = max_pos(A, B_digital, M, K, N, q, permutation, v_ref)
+        max_outputs_3 = max_neg(A, B_digital, M, K, N, q, permutation, v_ref)
 
         max_outputs_1 = torch.abs(max_outputs_1)
         max_outputs_2 = torch.abs(max_outputs_2)
@@ -147,9 +170,9 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, gaussian_approximation, 
     else:
         M=A.shape[1]
 
-        max_outputs_1 = max_normal(A, B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section)
-        max_outputs_2 = max_pos(A, B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section)
-        max_outputs_3 = max_neg(A, B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section)
+        max_outputs_1 = max_normal(A, B_digital, M, K, N, q, permutation, v_ref)
+        max_outputs_2 = max_pos(A, B_digital, M, K, N, q, permutation, v_ref)
+        max_outputs_3 = max_neg(A, B_digital, M, K, N, q, permutation, v_ref)
 
         max_outputs_1 = torch.abs(max_outputs_1)
         max_outputs_2 = torch.abs(max_outputs_2)
@@ -159,32 +182,21 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, gaussian_approximation, 
         max_2 = torch.max(max_1, max_outputs_3)
     energy=0
 
-    if gaussian_approximation:
+    
+    q_step_0 = torch.abs(max_2)/(2**(b)-1) + 1e-12
+    q_step_1 = torch.abs(max_2)/(2**(b)-1) + 1e-12
+    q_step_2 = torch.abs(max_2)/(2**(b)-1) + 1e-12
+    
+    digital_without_sign = []
+    for i in range(C_correct.shape[0]):
+        digital_without_sign.append(torch.abs(torch.round(C_correct[i][0]/q_step_0[i][0])*q_step_0[i][0]))
+        digital_without_sign.append(torch.abs(torch.round(C_correct[i][1]/q_step_1[i][1])*q_step_1[i][1]))
+        digital_without_sign.append(torch.abs(torch.round(C_correct[i][2]/q_step_2[i][2])*q_step_2[i][2]))
 
-        q_step_0 = torch.abs(max_2)/(2**(b)-1) + 1e-12
-        q_step_1 = torch.abs(max_2)/(2**(b)-1) + 1e-12
-        q_step_2 = torch.abs(max_2)/(2**(b)-1) + 1e-12
-        
-        digital_without_sign = []
-        for i in range(C_correct.shape[0]):
-            digital_without_sign.append(torch.abs(torch.round(C_correct[i][0]/q_step_0[i][0])*q_step_0[i][0]))
-            digital_without_sign.append(torch.abs(torch.round(C_correct[i][1]/q_step_1[i][1])*q_step_1[i][1]))
-            digital_without_sign.append(torch.abs(torch.round(C_correct[i][2]/q_step_2[i][2])*q_step_2[i][2]))
+    digital_without_sign = torch.stack(digital_without_sign).reshape(C_correct.shape).to(device)
 
-        digital_without_sign = torch.stack(digital_without_sign).reshape(C_correct.shape).to(device)
-
-        energy = C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3 + C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3 + C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3
-        adcs=b
-    else:
-
-        q_step_0 = torch.abs(max_2)/(2**(b)-1) + 1e-12
-        digital_without_sign = []
-        digital_without_sign.append(torch.abs(torch.round(C_correct/q_step_0)*q_step_0))
-
-        digital_without_sign = torch.stack(digital_without_sign).reshape(C_correct.shape).to(device)
-        
-        energy = C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)
-        adcs=b
+    energy = C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3 + C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3 + C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3
+    adcs=b
     
     digital_outputs = torch.zeros(digital_without_sign.shape).to(device)
     output_signs = (C_correct<0).type(torch.int)
@@ -202,7 +214,7 @@ def filling_array(x, q):
             B_digital.append(convert_to_neg_bin(x[i][j],q))
     return torch.Tensor(B_digital).reshape(x.shape[0],x.shape[1],q).to(device)
 
-def max_normal(A,B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section):
+def max_normal(A,B_digital, M, K, N, q, permutation, v_ref):
     results_pims=[]
     results_pims_final=[]
     A = torch.ones(A.shape).to(device)*v_ref
@@ -219,60 +231,32 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref, gaussian_approximati
                 results_pims.append(torch.outer(A[j][:,i], B_digital[j][i]))
             results_pims_final.append(torch.stack(results_pims).reshape(K, M, q).to(device))
             results_pims=[]
-    
+        
     tiles_normal = results_pims_final
 
     C_wait = tiles_normal
     C_tiles = []
     C_after_sum=[]
 
-    if gaussian_approximation:
-        perc = [68.2, 27.2]
-        #print([0,int(np.floor((perc[0]/100)*K))])
-        #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
-        #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
-
-        '''
-        C_after=[]
-        for j in range(N):
-            C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-        
-            C_tiles = torch.stack(C_tiles)
-            C_tiles = torch.sum(C_tiles,axis=0)
-            C_after.append(C_tiles)
-            C_tiles=[]
-        print(torch.stack(C_after))
-        '''
-
-        for j in range(N):
-            C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-
-            C_tiles = torch.stack(C_tiles).to(device)
-            C_after_sum.append(C_tiles)
-            C_tiles=[]
-
-        C_wait = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
-        #print(torch.sum(C_wait,axis=1))
+    perc = [68.2, 27.2]
+    #print([0,int(np.floor((perc[0]/100)*K))])
+    #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
+    #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
     
-    else:
-        if len_section==1:
-            for j in range(N):
-                C_tiles.append(torch.sum(C_wait[j],axis=0))
+    for j in range(N):
+        C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
 
-                C_tiles = torch.stack(C_tiles).to(device)
-                C_after_sum.append(C_tiles)
-                C_tiles=[]
+        C_tiles = torch.stack(C_tiles).to(device)
+        C_after_sum.append(C_tiles)
+        C_tiles=[]
 
-            C_wait = torch.stack(C_after_sum).reshape(N,1,M,q).to(device)
-        else:
-            C_wait = torch.stack(C_wait).to(device)
+    C_wait = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
+
     return C_wait
 
-def max_pos(A,B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section):
+def max_pos(A,B_digital, M, K, N, q, permutation, v_ref):
     results_pims=[]
     results_pims_final=[]
     B_digital = torch.where(B_digital > 0, 1, 0)
@@ -297,55 +281,24 @@ def max_pos(A,B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation,
     C_tiles = []
     C_after_sum=[]
 
-    if gaussian_approximation:
-        perc = [68.2, 27.2]
-        #print([0,int(np.floor((perc[0]/100)*K))])
-        #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
-        #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
+    perc = [68.2, 27.2]
+    #print([0,int(np.floor((perc[0]/100)*K))])
+    #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
+    #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
+    for j in range(N):
+        C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
 
-        '''
-        C_after=[]
-        for j in range(N):
-            C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-        
-            C_tiles = torch.stack(C_tiles)
-            C_tiles = torch.sum(C_tiles,axis=0)
-            C_after.append(C_tiles)
-            C_tiles=[]
-        print(torch.stack(C_after))
-        '''
+        C_tiles = torch.stack(C_tiles).to(device)
+        C_after_sum.append(C_tiles)
+        C_tiles=[]
 
-        for j in range(N):
-            C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-
-            C_tiles = torch.stack(C_tiles).to(device)
-            C_after_sum.append(C_tiles)
-            C_tiles=[]
-
-        C_wait = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
-        #print(torch.sum(C_wait,axis=1))
-    
-    else:
-        if len_section==1:
-            for j in range(N):
-                C_tiles.append(torch.sum(C_wait[j],axis=0))
-
-                C_tiles = torch.stack(C_tiles).to(device)
-                C_after_sum.append(C_tiles)
-                C_tiles=[]
-
-            C_wait = torch.stack(C_after_sum).reshape(N,1,M,q).to(device)
-        else:
-            C_wait = torch.stack(C_wait).to(device)
-
+    C_wait = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
     
     return C_wait
 
-def max_neg(A,B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation, len_section):
+def max_neg(A,B_digital, M, K, N, q, permutation, v_ref):
     results_pims=[]
     results_pims_final=[]
     B_digital = torch.where(B_digital > 0, -1, B_digital.to(int))
@@ -370,50 +323,20 @@ def max_neg(A,B_digital, M, K, N, q, permutation, v_ref, gaussian_approximation,
     C_tiles = []
     C_after_sum=[]
 
-    if gaussian_approximation:
-        perc = [68.2, 27.2]
-        #print([0,int(np.floor((perc[0]/100)*K))])
-        #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
-        #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
+    perc = [68.2, 27.2]
+    #print([0,int(np.floor((perc[0]/100)*K))])
+    #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
+    #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
+    for j in range(N):
+        C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
 
-        '''
-        C_after=[]
-        for j in range(N):
-            C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-        
-            C_tiles = torch.stack(C_tiles)
-            C_tiles = torch.sum(C_tiles,axis=0)
-            C_after.append(C_tiles)
-            C_tiles=[]
-        print(torch.stack(C_after))
-        '''
+        C_tiles = torch.stack(C_tiles).to(device)
+        C_after_sum.append(C_tiles)
+        C_tiles=[]
 
-        for j in range(N):
-            C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-
-            C_tiles = torch.stack(C_tiles).to(device)
-            C_after_sum.append(C_tiles)
-            C_tiles=[]
-
-        C_wait = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
-        #print(torch.sum(C_wait,axis=1))
-    
-    else:
-        if len_section==1:
-            for j in range(N):
-                C_tiles.append(torch.sum(C_wait[j],axis=0))
-
-                C_tiles = torch.stack(C_tiles).to(device)
-                C_after_sum.append(C_tiles)
-                C_tiles=[]
-
-            C_wait = torch.stack(C_after_sum).reshape(N,1,M,q).to(device)
-        else:
-            C_wait = torch.stack(C_wait).to(device)
+    C_wait = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
     
     return C_wait
 
@@ -446,7 +369,7 @@ def sorting_area(A):
     return A[-1] #sorting by number of 1s
 
 
-def cim(A, B, v_ref, d, q, b, permutation, prints, gaussian_approximation, len_section):
+def cim(A, B, v_ref, d, q, b, permutation, prints):
     if prints:
         print('Starting CIMulator...\n')
 
@@ -462,8 +385,8 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, gaussian_approximation, len_s
     b=b
     permutation = permutation
     K = A.shape[1]
-    N = B.shape[1]
     M = A.shape[0]
+    N = B.shape[1]
 
     # input and weights
     # digital A
@@ -505,6 +428,7 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, gaussian_approximation, len_s
     # operating
     # actual MM
     t1=time.time()
+
     C_wait, B_new, A_new, means = compute_tiles_nn(A_analog, B_digital, B_signs, permutation)
     '''
     t1=time.time()
@@ -515,52 +439,36 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, gaussian_approximation, len_s
     C_tiles = []
 
     C_after_sum=[]
+    perc = [68.2, 27.2]
+    #print([0,int(np.floor((perc[0]/100)*K))])
+    #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
+    #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
 
-    if gaussian_approximation:
-        perc = [68.2, 27.2]
-        #print([0,int(np.floor((perc[0]/100)*K))])
-        #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
-        #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
-
-        '''
-        C_after=[]
-        for j in range(N):
-            C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-        
-            C_tiles = torch.stack(C_tiles)
-            C_tiles = torch.sum(C_tiles,axis=0)
-            C_after.append(C_tiles)
-            C_tiles=[]
-        print(torch.stack(C_after))
-        '''
-
-        for j in range(N):
-            C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-            C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-
-            C_tiles = torch.stack(C_tiles).to(device)
-            C_after_sum.append(C_tiles)
-            C_tiles=[]
-
-        C_wait = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
-        #print(torch.sum(C_wait,axis=1))
+    '''
+    C_after=[]
+    for j in range(N):
+        C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
     
-    else:
-        if len_section==1:
-            for j in range(N):
-                C_tiles.append(torch.sum(C_wait[j],axis=0))
+        C_tiles = torch.stack(C_tiles)
+        C_tiles = torch.sum(C_tiles,axis=0)
+        C_after.append(C_tiles)
+        C_tiles=[]
+    print(torch.stack(C_after))
+    '''
 
-                C_tiles = torch.stack(C_tiles).to(device)
-                C_after_sum.append(C_tiles)
-                C_tiles=[]
+    for j in range(N):
+        C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
+        C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
 
-            C_wait = torch.stack(C_after_sum).reshape(N,1,M,q).to(device)
-        else:
-            C_wait = torch.stack(C_wait).to(device)
+        C_tiles = torch.stack(C_tiles).to(device)
+        C_after_sum.append(C_tiles)
+        C_tiles=[]
 
+    C_wait = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
+    #print(torch.sum(C_wait,axis=1))
     t2=time.time()
     if prints:
         print('Time due to MM: ' + str(t2-t1))
@@ -568,11 +476,10 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, gaussian_approximation, len_s
     # scaling for each column power
     C_wait2 = torch.multiply(C_wait, powers)
     C_compare = torch.sum(C_wait2, axis=1)
-    
-    print(C_wait2)
+
     # converting output to digital
     t1=time.time()
-    digital_outputs, adcs, energy_value = adc(A_new, B_new, C_wait2, v_ref, b, permutation, gaussian_approximation, len_section)
+    digital_outputs, adcs, energy_value = adc(A_new, B_new, C_wait2, v_ref, b, permutation)
     
     digital_outputs = torch.sum(digital_outputs, axis=1)
     #print(digital_outputs)

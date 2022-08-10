@@ -9,6 +9,7 @@ import os
 import models
 
 from torchvision import datasets, transforms
+from functions import *
 
 global test_loss
 global test_best_accs
@@ -126,6 +127,8 @@ if __name__=='__main__':
     print(model)
     param_dict = dict(model.named_parameters())
     params = []
+
+    count_parameters(model)
     
     for key, value in param_dict.items():
         params += [{'params':[value], 'lr': args.lr,
@@ -154,7 +157,6 @@ if __name__=='__main__':
     if len(lines) != 10000:
         print(len(lines))
         print('Double check the number of lines in energy')
-        exit()
     energy= np.sum(reading)
     f.close()
 
