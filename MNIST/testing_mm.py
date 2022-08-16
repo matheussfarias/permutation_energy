@@ -4,13 +4,13 @@ import time
 from functions import *
 
 torch.manual_seed(50)
-
-
+perc= [68.2,27.2]
+perc= [80,10]
 # input and weights
 # digital A
-M = 2
-K = 4
-N = 3
+M = 316
+K = 100
+N = 10
 
 length = 12
 num_sections=int(K/length)
@@ -28,5 +28,22 @@ print('B_signs: ' + str(B_signs))
 C = torch.matmul(A,B)
 print(A.shape)
 print(B.shape)
-result, valor, e = cim(A.detach().to(device), B.detach().to(device), 1, 12, 12, 12, permutation = 'random', prints=True)
-print(e)
+grid_number=1000
+best_err=10000
+
+#for i in range(grid_number):
+#    first = 100*np.random.rand()
+#    perc = [first, (100-np.floor(first))*np.random.rand()]
+#    result, valor, e = cim(A.detach().to(device), B.detach().to(device), 1, 12, 12, 4, permutation = 'sorted', prints=True, perc=perc)
+#    print(e)
+#    if valor[0]<best_err:
+#        best_perc = perc
+#        best_err = valor[0]
+
+
+
+#print(best_perc)
+#print(best_err)
+
+result, valor, e = cim(A.detach().to(device), B.detach().to(device), 1, 12, 12, 4, permutation = 'sorted', prints=True, perc=[68.2,27.2])
+print(valor)

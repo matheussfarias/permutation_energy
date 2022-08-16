@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import time
+from prettytable import PrettyTable
 
 global device
 
@@ -10,6 +11,21 @@ if cuda_act == True:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 else:
     device = torch.device('cpu')
+
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    modules=0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad: continue
+        params = parameter.numel()
+        table.add_row([name, params])
+        total_params+=params
+        modules+=1
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    print(f"Total Number of Trainable Modules: {modules}")
+    return total_params
 
 def compute_tiles_nn(A, B, B_signs, t):
     tiles = [0]

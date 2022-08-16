@@ -15,19 +15,15 @@ import time
 import numpy as np
 from functions import *
 
-def preprocessing(x, w):
-        inp_unf = torch.nn.functional.unfold(x, (w.shape[2], w.shape[3]))
-        A = inp_unf.transpose(1, 2)
-        B = w.view(w.size(0), -1).t()
-        return A,B
+def preprocessing(x, w, padding):
+    inp_unf = torch.nn.functional.unfold(x, (w.shape[2], w.shape[3]), padding=1)
+    A = inp_unf.transpose(1, 2)
+    B = w.view(w.size(0), -1).t()
+    return A,B
 
 def postprocessing(x, exp_x, bias):
-    x = x.transpose(1, 2)
+    x = x.transpose(1,2)
     x = x.view(exp_x.shape)
-    
-    # bias
-    bias = torch.broadcast_to(bias,(x.shape[0],x.shape[1])).reshape(x.shape[0],x.shape[1],1,1)
-    x += bias
     return x
 
 
@@ -120,10 +116,9 @@ class SimpleDLA(nn.Module):
         self.linear = nn.Linear(512, num_classes)
 
 
-    def forward_a(self, x):
+    def forward(self, x):
         exp_x = self.conv1(x)
-
-        A,B = preprocessing(x, self.conv1.weight)
+        A,B = preprocessing(x, self.conv1.weight, self.conv1.padding)
         result = torch.matmul(A,B)
         partial_result = result
         result_total=[]
@@ -145,12 +140,10 @@ class SimpleDLA(nn.Module):
             total_time += t2-t1
         print(total_time)
         total_time=0
-
+        
         result_total = torch.stack(result_total).reshape(partial_result.shape)
-
         print(performances)
         print('Batch Done')
-
         out = postprocessing(result_total, exp_x, self.conv1.bias)
 
         out = self.bn1(out)
@@ -167,9 +160,14 @@ class SimpleDLA(nn.Module):
         out = self.linear(out)
         return out
 
-    def forward(self, x):
+    def forward_a(self, x):
         out = self.conv1(x)
+        print(x.shape)
+        print(self.conv1.weight.shape)
+        print(out.shape)
         out = self.bn1(out)
+        print(out.shape)
+        exit()
         out = self.relu1(out)
 
         out = self.layer1(out)

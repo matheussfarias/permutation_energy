@@ -148,7 +148,7 @@ def compute_tiles_nn(A, B, B_signs, t):
         
     return tiles, B_pim_signed, A_final, mean_temp
 
-def adc(A, B_digital, C_correct, v_ref, b, permutation):
+def adc(A, B_digital, C_correct, v_ref, b, permutation, perc):
     N = B_digital.shape[0]
     K = B_digital.shape[1]
     q = B_digital.shape[2]
@@ -157,9 +157,9 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation):
     if permutation=='random':
         M = A.shape[0]
 
-        max_outputs_1 = max_normal(A, B_digital, M, K, N, q, permutation, v_ref)
-        max_outputs_2 = max_pos(A, B_digital, M, K, N, q, permutation, v_ref)
-        max_outputs_3 = max_neg(A, B_digital, M, K, N, q, permutation, v_ref)
+        max_outputs_1 = max_normal(A, B_digital, M, K, N, q, permutation, v_ref, perc)
+        max_outputs_2 = max_pos(A, B_digital, M, K, N, q, permutation, v_ref, perc)
+        max_outputs_3 = max_neg(A, B_digital, M, K, N, q, permutation, v_ref, perc)
 
         max_outputs_1 = torch.abs(max_outputs_1)
         max_outputs_2 = torch.abs(max_outputs_2)
@@ -170,9 +170,9 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation):
     else:
         M=A.shape[1]
 
-        max_outputs_1 = max_normal(A, B_digital, M, K, N, q, permutation, v_ref)
-        max_outputs_2 = max_pos(A, B_digital, M, K, N, q, permutation, v_ref)
-        max_outputs_3 = max_neg(A, B_digital, M, K, N, q, permutation, v_ref)
+        max_outputs_1 = max_normal(A, B_digital, M, K, N, q, permutation, v_ref, perc)
+        max_outputs_2 = max_pos(A, B_digital, M, K, N, q, permutation, v_ref, perc)
+        max_outputs_3 = max_neg(A, B_digital, M, K, N, q, permutation, v_ref, perc)
 
         max_outputs_1 = torch.abs(max_outputs_1)
         max_outputs_2 = torch.abs(max_outputs_2)
@@ -184,8 +184,8 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation):
 
     
     q_step_0 = torch.abs(max_2)/(2**(b)-1) + 1e-12
-    q_step_1 = torch.abs(max_2)/(2**(b)-1) + 1e-12
-    q_step_2 = torch.abs(max_2)/(2**(b)-1) + 1e-12
+    q_step_1 = torch.abs(max_2)/(2**(b-1)-1) + 1e-12
+    q_step_2 = torch.abs(max_2)/(2**(b-2)-1) + 1e-12
     
     digital_without_sign = []
     for i in range(C_correct.shape[0]):
@@ -195,7 +195,7 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation):
 
     digital_without_sign = torch.stack(digital_without_sign).reshape(C_correct.shape).to(device)
 
-    energy = C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3 + C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3 + C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3
+    energy = C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b)/3 + C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b-1)/3 + C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b-2)/3
     adcs=b
     
     digital_outputs = torch.zeros(digital_without_sign.shape).to(device)
@@ -214,7 +214,7 @@ def filling_array(x, q):
             B_digital.append(convert_to_neg_bin(x[i][j],q))
     return torch.Tensor(B_digital).reshape(x.shape[0],x.shape[1],q).to(device)
 
-def max_normal(A,B_digital, M, K, N, q, permutation, v_ref):
+def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc):
     results_pims=[]
     results_pims_final=[]
     A = torch.ones(A.shape).to(device)*v_ref
@@ -238,7 +238,7 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref):
     C_tiles = []
     C_after_sum=[]
 
-    perc = [68.2, 27.2]
+    #perc = [68.2, 27.2]
     #print([0,int(np.floor((perc[0]/100)*K))])
     #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
     #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
@@ -256,7 +256,7 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref):
 
     return C_wait
 
-def max_pos(A,B_digital, M, K, N, q, permutation, v_ref):
+def max_pos(A,B_digital, M, K, N, q, permutation, v_ref, perc):
     results_pims=[]
     results_pims_final=[]
     B_digital = torch.where(B_digital > 0, 1, 0)
@@ -281,7 +281,7 @@ def max_pos(A,B_digital, M, K, N, q, permutation, v_ref):
     C_tiles = []
     C_after_sum=[]
 
-    perc = [68.2, 27.2]
+    #perc = [68.2, 27.2]
     #print([0,int(np.floor((perc[0]/100)*K))])
     #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
     #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
@@ -298,7 +298,7 @@ def max_pos(A,B_digital, M, K, N, q, permutation, v_ref):
     
     return C_wait
 
-def max_neg(A,B_digital, M, K, N, q, permutation, v_ref):
+def max_neg(A,B_digital, M, K, N, q, permutation, v_ref,perc):
     results_pims=[]
     results_pims_final=[]
     B_digital = torch.where(B_digital > 0, -1, B_digital.to(int))
@@ -323,7 +323,7 @@ def max_neg(A,B_digital, M, K, N, q, permutation, v_ref):
     C_tiles = []
     C_after_sum=[]
 
-    perc = [68.2, 27.2]
+    #perc = [68.2, 27.2]
     #print([0,int(np.floor((perc[0]/100)*K))])
     #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
     #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
@@ -369,7 +369,7 @@ def sorting_area(A):
     return A[-1] #sorting by number of 1s
 
 
-def cim(A, B, v_ref, d, q, b, permutation, prints):
+def cim(A, B, v_ref, d, q, b, permutation, prints, perc):
     if prints:
         print('Starting CIMulator...\n')
 
@@ -439,7 +439,7 @@ def cim(A, B, v_ref, d, q, b, permutation, prints):
     C_tiles = []
 
     C_after_sum=[]
-    perc = [68.2, 27.2]
+    #perc = [68.2, 27.2]
     #print([0,int(np.floor((perc[0]/100)*K))])
     #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
     #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
@@ -479,7 +479,7 @@ def cim(A, B, v_ref, d, q, b, permutation, prints):
 
     # converting output to digital
     t1=time.time()
-    digital_outputs, adcs, energy_value = adc(A_new, B_new, C_wait2, v_ref, b, permutation)
+    digital_outputs, adcs, energy_value = adc(A_new, B_new, C_wait2, v_ref, b, permutation, perc)
     
     digital_outputs = torch.sum(digital_outputs, axis=1)
     #print(digital_outputs)
