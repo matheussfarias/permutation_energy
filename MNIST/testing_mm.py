@@ -4,7 +4,7 @@ import time
 from functions import *
 
 torch.manual_seed(50)
-perc= [68.2,27.2]
+perc= [68,27]
 perc= [80,10]
 # input and weights
 # digital A
@@ -14,7 +14,7 @@ N = 10
 
 length = 12
 num_sections=int(K/length)
-A = torch.randn(1,K)
+A = torch.randn(M,K)
 A = A*(A>0) + 1e-12
 print('A: ' + str(A))
 
@@ -44,6 +44,5 @@ best_err=10000
 
 #print(best_perc)
 #print(best_err)
-
-result, valor, e = cim(A.detach().to(device), B.detach().to(device), 1, 12, 12, 4, permutation = 'sorted', prints=True, perc=[68.2,27.2])
+result, valor, e = cim(A.detach().to(device), B.detach().to(device), 1, 12, 12, 12, permutation = 'sorted', prints=True, perc=[68,27], num_sec=3, b_set = None)
 print(valor)

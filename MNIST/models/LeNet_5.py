@@ -4,7 +4,9 @@ import time
 from functions import *
 import matplotlib.pyplot as plt
 import os
-grid_perc= [68,27]
+grid_perc= [100]
+grid_sec= 1
+grid_b_set= None
 
 def preprocessing(x, w, padding):
     inp_unf = torch.nn.functional.unfold(x, (w.shape[2], w.shape[3]), padding = padding)
@@ -21,7 +23,7 @@ def postprocessing(x, exp_x, bias):
     x += bias
     return x
 
-def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sorted', grid = False, perc=[68.2, 27.2]):
+def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sorted', grid = False, perc=[68, 27], num_sec=3, b_set = None):
     opt_grind = 0.1
     print(perc)
     dim = layer(x)
@@ -37,7 +39,7 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sort
         for i in range(int(opt_grind*partial_result.shape[0])):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc)
+            result, valor, energy_value = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set = b_set)
             f=open('./grid/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -54,7 +56,7 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sort
         for i in range(partial_result.shape[0]):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc)
+            result, valor, energy_value = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set = b_set)
             f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -77,7 +79,7 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sort
     return x
 
 
-def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sorted', grid = False, perc=[68.2, 27.2]):
+def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sorted', grid = False, perc=[68, 27], num_sec=3, b_set = None):
     opt_grind = 0.1
     print(perc)
     dim = layer(x)
@@ -95,7 +97,7 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'so
         for i in range(int(opt_grind*partial_result.shape[0])):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False, perc=perc)
+            result, valor, energy_value = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False, perc=perc, num_sec=num_sec, b_set=b_set)
             f=open('./grid/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -114,7 +116,7 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'so
         for i in range(partial_result.shape[0]):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc)
+            result, valor, energy_value = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set=b_set)
             f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -200,20 +202,20 @@ class LeNet_5_Grid(nn.Module):
     def forward(self, x):
         """Forward propagation procedure"""
         #x = self.conv1(x)
-        x = conv_to_cim(x, self.conv1, grid=True, perc = grid_perc)
+        x = conv_to_cim(x, self.conv1, grid=True, perc = grid_perc, num_sec=grid_sec, b_set = grid_b_set)
         x = self.relu1(x)
 
         #x = self.conv2(x)
-        x = conv_to_cim(x, self.conv2, grid=True, perc = grid_perc)
+        x = conv_to_cim(x, self.conv2, grid=True, perc = grid_perc, num_sec=grid_sec, b_set = grid_b_set)
         x = self.relu2(x)
         
         #x = self.conv3(x)
-        x = conv_to_cim(x, self.conv3, grid=True, perc = grid_perc)
+        x = conv_to_cim(x, self.conv3, grid=True, perc = grid_perc, num_sec=grid_sec, b_set = grid_b_set)
         x = self.relu3(x)
 
         x = x.reshape(-1, 720)
         #x = self.fc1(x)
-        x = fc_to_cim(x, self.fc1, grid=True, perc = grid_perc)
+        x = fc_to_cim(x, self.fc1, grid=True, perc = grid_perc, num_sec=grid_sec, b_set = grid_b_set)
         return x
     
     def forward_a(self, x):
