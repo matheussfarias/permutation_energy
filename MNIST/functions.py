@@ -207,12 +207,18 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set):
     digital_without_sign = torch.stack(digital_without_sign).reshape(C_correct.shape).to(device)
 
     energy = 0
+
     if b_set==None:
-        for i in range(num_sec):
-            energy+=C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b-i)/num_sec
+        for j in range(C_correct.shape[0]):
+            sec = (torch.sum(C_correct[j],axis=1) != 0).type(torch.int)
+            for i in range(num_sec):
+                print(2**(b-i))
+                energy+=torch.sum(sec[i])*2**(b-i)
     else:
-        for i in range(num_sec):
-            energy+=C_correct.shape[0]*C_correct.shape[1]*C_correct.shape[2]*2**(b_set[i])/num_sec
+        for j in range(C_correct.shape[0]):
+            sec = (torch.sum(C_correct[j],axis=1) != 0).type(torch.int)
+            for i in range(num_sec):
+                energy+=torch.sum(sec[i])*2**(b_set[i])
     adcs=b
 
     digital_outputs = torch.zeros(digital_without_sign.shape).to(device)
@@ -447,7 +453,6 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set):
     t2=time.time()
     if prints:
         print('\nError due to DAC: ' + str(err_dac))
-        print('{0:.20f}'.format(err_dac))
         print('Time due to DAC: ' + str(t2-t1))
 
     # converting B to digital
@@ -459,7 +464,6 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set):
     t2=time.time()
     if prints:
         print('Error due to matrix B conversion: ' + str(err_mm))
-        print('{0:.20f}'.format(err_mm))
         print('Time due to matrix B conversion: ' + str(t2-t1))
 
     # operating
@@ -520,7 +524,6 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set):
 
     
     digital_outputs, adcs, energy_value = adc(A_new, B_new, C_wait2, v_ref, b, permutation, perc, num_sec, b_set)
-    
     digital_outputs = torch.sum(digital_outputs, axis=1)
     #print(digital_outputs)
     #print(C_compare)
@@ -530,7 +533,6 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set):
     t2=time.time()
     if prints:
         print('Error due to ADC: ' + str(err_adc))
-        print('{0:.20f}'.format(err_adc))
         print('Energy due to ADC: ' + str(energy_value))
         print('Time due to ADC: ' + str(t2-t1))
 
@@ -551,6 +553,5 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set):
         print('Expected result: ' + str(C))
         print('Obtained result: ' + str(result))
         print('Total error: ' + str(error))
-        print('{0:.20f}'.format(error))
 
     return result, (error, err_adc), energy_value
