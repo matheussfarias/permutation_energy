@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 np.set_printoptions(suppress=True)
+np.set_printoptions(precision=2)
 np.set_printoptions(threshold=sys.maxsize)
 torch.manual_seed(42)
 np.random.seed(42)
@@ -30,10 +31,10 @@ def sorting_area(A):
     return A[-3]
 
 # DEFINING VARIABLES
-n_weights = 256 # number of weights
+n_weights = 8000 # number of weights
 bits = 8 # number of bits to represent all weights
 stdev = 1 # standard deviation for the distribution
-n_sections = n_weights # number of sections
+n_sections =8 # number of sections
 
 # CREATING NORMAL DISTRIBUTION (JUST NON-NEGATIVE VALUES)
 w = []
@@ -46,7 +47,7 @@ w = torch.FloatTensor(w)
 
 # CONVERTING THE VALUES TO INTEGERS AND SORTING THEM
 w, _ = quantize(w, bits)
-w = torch.sort(w).values
+#w = torch.sort(w).values
 print("Weight values:")
 print(w)
 print(" ")
@@ -67,7 +68,7 @@ for i in range(len(w)):
             break
     binary.append((converted,np.sum(converted), msb, msb+np.sum(converted)))
 
-binary.sort(key=sorting_sum)
+#binary.sort(key=sorting_area)
 binary_area=[]
 for i in range(len(w)):
     binary_area.append(binary[i][0])
@@ -76,43 +77,66 @@ binary_area = np.array(binary_area)
 
 binary = binary_area
 
+print(len(binary))
+'''
+sec= [[],[],[],[],[],[],[],[]]
+prob = [[],[],[],[],[],[],[],[]]
+sections=[[],[],[],[],[],[],[],[]]
+s = np.zeros(bits)
+zero=0
+for i in range(len(binary)):
+    for j in range(bits):
+        if binary[i][j]!=0:
+            sec[bits-j-1].append(binary[i])
+            s[bits-j-1]+=1
+            break
+        if j==bits-1:
+            zero=zero+1
 
+print(zero)
+for i in range(len(sec)):
+    length = len(sec[i])
+    sec[i] = np.sum(sec[i],axis=0)
+    prob[i] = sec[i]/length
+    
+print(np.vstack(sec))
+print(np.vstack(prob))
+print(s)
+# PLOTTING s_i x i
+print("Final s_i x i: ")
+plot = np.ones(bits)
+plt.stem(np.arange(1,bits+1), plot)
+plt.ylabel(r'$s_i$', size=20)
+plt.xlabel(r'$i$', size=20)
+plt.show()
+print(np.sum(prob))
+exit()
+
+'''
 # SECTIONING WEIGHTS
+'''sections = [[],[],[],[],[],[],[],[]]
+sections[0].append(binary[62:137])
+acc = [137-62, 329-137, 697-329, 1455-697, 2881-1455, 5311-2881, 7580-5311, 8000-7580]
+sections[1].append(binary[137:329])
+sections[2].append(binary[329:697])
+sections[3].append(binary[697:1455])
+sections[4].append(binary[1455:2881])
+sections[5].append(binary[2881:5311])
+sections[6].append(binary[5311:7580])
+sections[7].append(binary[7580:])
+'''
 sections = binary.reshape(n_sections, int(n_weights/n_sections), bits)
 print("Sections before accumulating")
 print(sections)
 print(" ")
 sections = np.sum(sections, axis=1)
+'''for i in range(len(sections)):
+    sections[i]=np.sum(sections[i],axis=1)
+sections=np.vstack(sections)'''
 print("Sections")
 print(sections)
 print(" ")
 
-means=[]
-number_of_ones=[]
-for i in range(binary.shape[0]):
-    means.append(np.mean(binary[i]))
-    number_of_ones.append(np.sum(binary[i]))
-
-print(means)
-plt.clf()
-plt.plot(means)
-plt.show()
-
-print(number_of_ones)
-plt.clf()
-plt.plot(number_of_ones)
-plt.show()
-
-w_new=[]
-powers_q = torch.FloatTensor([2**(bits-i-1) for i in range(0,bits)])
-for i in range(len(w)):
-    w_new.append(torch.sum(powers_q*binary[i]))
-
-w_new = torch.stack(w_new)
-plt.clf()
-plt.plot(w_new)
-plt.show()
-exit()
 # ASSIGNING EACH SECTION TO A s_i
 s = np.zeros(bits)
 
@@ -132,4 +156,29 @@ print(" ")
 print("Final s_i x i: ")
 print(s)
 plt.stem(np.arange(1,bits+1), s)
+plt.ylabel(r'$s_i$', size=20)
+plt.xlabel(r'$i$', size=20)
+plt.show()
+print(sections/(n_weights/n_sections))
+print(np.sum(sections/(n_weights/n_sections)))
+'''dens=[]
+for i in range(len(sections)):
+    dens.append(sections[i]/acc[i])
+print(dens)
+dens = np.array(dens)
+dens = np.vstack(dens)
+print(dens)
+print(np.sum(dens))'''
+exit()
+
+b = np.arange(0,13)
+
+y1 = 30*b-33
+y2 = 40*b - 60
+plt.clf()
+plt.plot(b, y1, label = 'sorted')
+plt.plot(b,y2, label = 'unsorted')
+plt.ylabel('Cost')
+plt.xlabel('Number of bits')
+plt.legend()
 plt.show()
