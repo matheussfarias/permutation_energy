@@ -7,9 +7,9 @@ torch.manual_seed(50)
 
 # input and weights
 # digital A
-M = 2
-K = 10
-N = 4
+M = 316
+K = 100
+N = 10
 
 
 A = torch.randn(M,K)
@@ -35,7 +35,7 @@ C = torch.matmul(A,B)
 print(A.shape)
 print(B.shape)
 print(C.shape)
-result, valor, e, active, s, noise = cim(A.detach().to(device), B.detach().to(device), 1, 12, 8, 12, permutation = 'random', prints=True, perc=(K/K)*np.ones(1), num_sec=10, b_set = (15*np.ones((10,8))).tolist(), opt=0, add_noise=1)
+result, valor, e, active, s, noise = cim(A.detach().to(device), B.detach().to(device), 1, 12, 8, 12, permutation = 'random', prints=True, perc=(K/1)*np.ones(1), num_sec=100, b_set = (8*np.ones((100,8))).tolist(), opt=0, add_noise=0, noise_gain=0)
 print(valor)
 print(e)
 print(active)
