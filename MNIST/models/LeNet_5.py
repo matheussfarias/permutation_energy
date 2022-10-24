@@ -24,7 +24,7 @@ def postprocessing(x, exp_x, bias):
     x += bias
     return x
 
-def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sorted', grid = False, perc=[68, 27], num_sec=3, b_set = None):
+def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'random', grid = False, perc=[68, 27], num_sec=100, b_set = None, opt=0, add_noise=0, noise_gain=0):
     opt_grind = 0.1
     print(perc)
     dim = layer(x)
@@ -40,7 +40,7 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sort
         for i in range(int(opt_grind*partial_result.shape[0])):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value,active = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set = b_set)
+            result, valor, energy_value,active = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set = b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             print(active)
             f=open('./grid/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
@@ -62,7 +62,7 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sort
         for i in range(partial_result.shape[0]):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value,active = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set = b_set)
+            result, valor, energy_value,active = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set = b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -89,7 +89,7 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 12, adc = 8, permutation = 'sort
     return x
 
 
-def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 8, permutation = 'sorted', grid = False, perc=[68, 27], num_sec=1, b_set = [12,12,12,12,12,12,12,12]):
+def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'sorted', grid = False, perc=[68, 27], num_sec=1, b_set = [12,12,12,12,12,12,12,12], opt=0, add_noise=0, noise_gain=0):
     opt_grind = 0.1
     print(perc)
     dim = layer(x)
@@ -99,7 +99,6 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 8, permutation = 'sor
     result_total=[]
     performances = []
     K = A.shape[2]
-    
     total_time=0
     shape = [[int(opt_grind*partial_result.shape[0])]]
     shape.append(list(partial_result.shape[1:]))
@@ -108,13 +107,21 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 8, permutation = 'sor
         for i in range(int(opt_grind*partial_result.shape[0])):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value, active = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False, perc=perc, num_sec=num_sec, b_set=b_set)
+            result, valor, energy_value, active, s, noise = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False, perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             f=open('./grid/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             f=open('./grid/active.txt','a')
             np.savetxt(f, [active], fmt='%1.3f', newline=", ")
+            f.write("\n")
+            f.close()
+            f=open('./grid/noise.txt','a')
+            np.savetxt(f, [noise], fmt='%1.3f', newline=", ")
+            f.write("\n")
+            f.close()
+            f=open('./results/s.txt','a')
+            np.savetxt(f, [s], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             t2=time.time()
@@ -131,7 +138,7 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 8, permutation = 'sor
         for i in range(partial_result.shape[0]):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value, active, s = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set=b_set, opt=0)
+            result, valor, energy_value, active, s, noise = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -142,6 +149,10 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 8, permutation = 'sor
             f.close()
             f=open('./results/s.txt','a')
             np.savetxt(f, [s], fmt='%1.3f', newline=", ")
+            f.write("\n")
+            f.close()
+            f=open('./results/noise.txt','a')
+            np.savetxt(f, [noise], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             t2=time.time()
@@ -178,20 +189,20 @@ class LeNet_5(nn.Module):
     def forward(self, x):
         """Forward propagation procedure"""
         #x = self.conv1(x)
-        x = conv_to_cim(x, self.conv1, perc = (100/100)*np.ones(99), permutation = 'random', num_sec=100, b_set = 100*[(12*np.ones(8)).tolist()])
+        x = conv_to_cim(x, self.conv1, num_sec=100, b_set = (8*np.ones((100,8))).tolist())
         x = self.relu1(x)
-        exit()
+
         x = self.conv2(x)
-        #x = conv_to_cim(x, self.conv2, perc = (1000/1000)*np.ones(999), permutation = 'random', num_sec=1000, b_set = 1000*[(12*np.ones(8)).tolist()])
+        #x = conv_to_cim(x, self.conv2, num_sec=1000, b_set = (8*np.ones((1000,8))).tolist())
         x = self.relu2(x)
-        exit()
-        #x = self.conv3(x)
-        x = conv_to_cim(x, self.conv3, perc = [68,27])
+        
+        x = self.conv3(x)
+        #x = conv_to_cim(x, self.conv3, num_sec=500, b_set = (8*np.ones((500,8))).tolist())
         x = self.relu3(x)
 
         x = x.reshape(-1, 720)
-        #x = self.fc1(x)
-        x = fc_to_cim(x, self.fc1, perc = [68,27])
+        x = self.fc1(x)
+        #x = fc_to_cim(x, self.fc1, num_sec=720, b_set = (8*np.ones((720,8))).tolist())
         return x
     
     def forward_a(self, x):

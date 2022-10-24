@@ -673,7 +673,6 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
 
     C_after_sum=[]
 
-    C_wait_1 = torch.stack(C_wait).to(device)
     C_wait_opt = torch.stack(C_wait).to(device)
     C_wait = torch.stack(C_wait).to(device)
     
@@ -681,19 +680,6 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     C_wait = torch.sum(C_wait, axis=2)
     
     C_tiles = []
-    C_after_sum=[]
-
-    for j in range(N):
-        for i in range (K):
-            if i ==K-1:
-                C_tiles.append(torch.sum(C_wait_1[j][np.sum(perc[:i], dtype=int):],axis=0))
-                break
-            C_tiles.append(torch.sum(C_wait_1[j][np.sum(perc[:i], dtype=int):np.sum(perc[:(i+1)], dtype=int)],axis=0))
-        C_tiles = torch.stack(C_tiles).to(device)
-        C_after_sum.append(C_tiles)
-        C_tiles=[]
-    C_wait_1 = torch.stack(C_after_sum).reshape(N,K,M,q).to(device)
-
 
     C_after_sum=[]
     for j in range(N):
