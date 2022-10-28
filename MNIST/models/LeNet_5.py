@@ -206,23 +206,23 @@ class LeNet_5(nn.Module):
         """Forward propagation procedure"""
         #x = self.conv1(x)
         #x = conv_to_cim(x, self.conv1, num_sec=100, b_set = (8*np.ones((100,8))).tolist())
-        x = conv_to_cim(x, self.conv1, num_sec=100, b_set = (6*np.ones((1,8))).tolist())
+        x = conv_to_cim(x, self.conv1, num_sec=1, b_set = (4*np.ones((1,8))).tolist())
         x = self.relu1(x)
 
         #x = self.conv2(x)
         #x = conv_to_cim(x, self.conv2, num_sec=1000, b_set = (8*np.ones((1000,8))).tolist())
-        x = conv_to_cim(x, self.conv2, num_sec=1000, b_set = (6*np.ones((1,8))).tolist())
+        x = conv_to_cim(x, self.conv2, num_sec=1, b_set = (4*np.ones((1,8))).tolist())
         x = self.relu2(x)
         
         #x = self.conv3(x)
         #x = conv_to_cim(x, self.conv3, num_sec=500, b_set = (8*np.ones((500,8))).tolist())
-        x = conv_to_cim(x, self.conv3, num_sec=500, b_set = (6*np.ones((1,8))).tolist())
+        x = conv_to_cim(x, self.conv3, num_sec=1, b_set = (4*np.ones((1,8))).tolist())
         x = self.relu3(x)
 
         x = x.reshape(-1, 720)
         #x = self.fc1(x)
         #x = fc_to_cim(x, self.fc1, num_sec=720, b_set = (8*np.ones((720,8))).tolist())
-        x = fc_to_cim(x, self.fc1, num_sec=720, b_set = (6*np.ones((1,8))).tolist())
+        x = fc_to_cim(x, self.fc1, num_sec=1, b_set = (4*np.ones((1,8))).tolist())
         return x
     
     def forward_a(self, x):

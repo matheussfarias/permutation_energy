@@ -322,7 +322,7 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_
 
     digital_outputs = torch.zeros(digital_without_sign.shape).to(device)
     output_signs = (C_correct<0).type(torch.int)
-    digital_outputs = torch.mul(digital_without_sign, (-1)**output_signs)
+    digital_outputs = torch.mul(digital_without_sign, (-1)**output_signs).to(torch.float).to(device)
 
     return digital_outputs, adcs, energy
 
