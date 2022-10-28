@@ -277,7 +277,7 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_
     energy = 0
     s = np.zeros(q+1)
     z = np.zeros(q+1)
-
+    n_adcs=0
 
     if b_set==None:
         for j in range(C_correct.shape[0]):
@@ -307,6 +307,7 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_
                     continue
                 else:
                     energy+=torch.sum(torch.multiply(sec[i],torch.tensor(np.power(2, b_set[i]))))
+                    n_adcs+=torch.sum((sec[i]>0).type(torch.int))
                 #sum = torch.sum(sec[i])
                 #s[sum]+=1
                 #for k in range(len(sec[i])):
@@ -318,13 +319,12 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_
         #print(s)
         #print(z)
         #exit()
-    adcs=b
 
     digital_outputs = torch.zeros(digital_without_sign.shape).to(device)
     output_signs = (C_correct<0).type(torch.int)
     digital_outputs = torch.mul(digital_without_sign, (-1)**output_signs).to(torch.float).to(device)
 
-    return digital_outputs, adcs, energy
+    return digital_outputs, n_adcs, energy
 
 def quantize(x,q):
     low = torch.min(x)
@@ -714,9 +714,9 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     t1=time.time()
 
     if opt==1:
-        digital_outputs, adcs, energy_value = adc(A_new, B_new, C_wait_opt, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt)
+        digital_outputs, n_adcs, energy_value = adc(A_new, B_new, C_wait_opt, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt)
     else:
-        digital_outputs, adcs, energy_value = adc(A_new, B_new, C_wait, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt)
+        digital_outputs, n_adcs, energy_value = adc(A_new, B_new, C_wait, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt)
     #digital_outputs = torch.sum(dequantize(digital_outputs,args,q), axis=1)
     #digital_outputs = torch.multiply(digital_outputs, powers_q)
     digital_outputs = torch.multiply(digital_outputs, powers)
@@ -753,4 +753,4 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
         print('Obtained result: ' + str(result))
         print('Total error: ' + str(error))
 
-    return result, (error, err_adc), energy_value, active, s, noise
+    return result, (error, err_adc), energy_value, active, s, noise, n_adcs
