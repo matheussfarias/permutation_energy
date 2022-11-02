@@ -602,7 +602,7 @@ def stochastic_rounding(x):
 
 
 
-def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, add_noise, noise_gain, find_adc):
+def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, add_noise, noise_gain):
     if prints:
         print('Starting CIMulator...\n')
 
