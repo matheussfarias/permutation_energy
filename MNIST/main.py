@@ -15,7 +15,7 @@ global test_loss
 global test_best_accs
 
 
-cuda_act = False
+cuda_act = True
 
 if cuda_act == True:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

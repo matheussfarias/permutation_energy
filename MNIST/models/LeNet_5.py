@@ -24,7 +24,7 @@ def postprocessing(x, exp_x, bias):
     x += bias
     return x
 
-def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'random', grid = False, perc=[68, 27], num_sec=100, b_set = None, opt=0, add_noise=0, noise_gain=0):
+def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'random', grid = False, perc=[68, 27], num_sec=100, b_set = None, opt=0, add_noise=0, noise_gain=0, prints=False):
     opt_grind = 0.1
     print(perc)
     dim = layer(x)
@@ -40,7 +40,7 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'rand
         for i in range(int(opt_grind*partial_result.shape[0])):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value,active,s,noise, n_adcs = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set = b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
+            result, valor, energy_value,active,s,noise, n_adcs = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=prints,perc=perc, num_sec=num_sec, b_set = b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             print(active)
             f=open('./grid/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
@@ -74,7 +74,7 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'rand
         for i in range(partial_result.shape[0]):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value,active,s,noise, n_adcs = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set = b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
+            result, valor, energy_value,active,s,noise, n_adcs = cim(x[i][np.newaxis, :].detach(), layer.weight.detach().T, v_ref, d, wq, adc, permutation = permutation, prints=prints,perc=perc, num_sec=num_sec, b_set = b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -113,11 +113,11 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'rand
     return x
 
 
-def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'sorted', grid = False, perc=[68, 27], num_sec=1, b_set = [12,12,12,12,12,12,12,12], opt=0, add_noise=0, noise_gain=0):
+def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'sorted', grid = False, perc=[68, 27], num_sec=1, b_set = [12,12,12,12,12,12,12,12], opt=0, add_noise=0, noise_gain=0, prints=False):
     opt_grind = 0.1
-    print(perc)
     dim = layer(x)
     A,B = preprocessing(x, layer.weight, layer.padding)
+    ta = time.perf_counter()
     result = torch.matmul(A,B)
     partial_result = result
     result_total=[]
@@ -131,7 +131,7 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'so
         for i in range(int(opt_grind*partial_result.shape[0])):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value, active, s, noise, n_adcs = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False, perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
+            result, valor, energy_value, active, s, noise, n_adcs = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=prints, perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             f=open('./grid/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -166,7 +166,7 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'so
         for i in range(partial_result.shape[0]):
             print('Current: '+ str(i))
             t1=time.time()
-            result, valor, energy_value, active, s, noise, n_adcs = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=False,perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
+            result, valor, energy_value, active, s, noise, n_adcs = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=prints,perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
@@ -222,7 +222,8 @@ class LeNet_5(nn.Module):
         """Forward propagation procedure"""
         #x = self.conv1(x)
         #x = conv_to_cim(x, self.conv1, num_sec=100, b_set = (8*np.ones((100,8))).tolist())
-        x = conv_to_cim(x, self.conv1, num_sec=1, b_set = (np.multiply(np.array([8, 8, 8, 7, 6, 6, 6, 5]),np.ones((100,8)))).tolist(), add_noise = 1, noise_gain = 0.01)
+
+        x = conv_to_cim(x, self.conv1, prints=True, num_sec=1, b_set = torch.mul(torch.FloatTensor([8, 8, 8, 7, 6, 6, 6, 5]),torch.ones((100,8))).to(device), add_noise = 1, noise_gain = 0.01)
         x = self.relu1(x)
 
         #x = self.conv2(x)
