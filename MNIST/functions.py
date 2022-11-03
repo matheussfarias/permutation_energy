@@ -31,6 +31,38 @@ def count_parameters(model):
     print(f"Total Number of Trainable Modules: {modules}")
     return total_params
 
+def ef_compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
+    tiles = [0]
+    M = A.shape[0]
+    K = A.shape[1]
+    N = B.shape[1]
+    q = B.shape[2]
+
+    ans = torch.zeros(M,N,q).to(device)
+    if t != "random":
+        B_temp = []
+        A_temp = []
+        powers = torch.FloatTensor([2**(-i) for i in range(-1,q-1)]).to('cuda')
+        ta = time.perf_counter()
+        shape_B = B.shape
+        if t == "sorted":
+            stacked = B.reshape((B.shape[0]*B.shape[1], B.shape[2]))
+            indeces = torch.argsort(torch.sum(torch.mul(powers,stacked), axis=1))
+            sorted_stacked = stacked[indeces]
+            B_sorted = sorted_stacked.reshape(B.shape)
+        if t == "area":
+            stacked = B.reshape((B.shape[0]*B.shape[1], B.shape[2]))
+            indeces = torch.argsort(torch.sum(stacked, axis=1))
+            sorted_stacked = stacked[indeces]
+            B_sorted = sorted_stacked.reshape(B.shape)
+        tb = time.perf_counter()
+        print(B_sorted)
+        print(B_signs)
+        print(B_sorted.shape)
+        print(B_signs.shape)
+        print(A)
+        exit()
+
 def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
     tiles = [0]
     M = A.shape[0]
@@ -44,14 +76,15 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
     if t != "random":
         B_temp = []
         A_temp = []
+        powers = torch.FloatTensor([2**(-i) for i in range(-1,q-1)]).to('cuda')
+        ta = time.perf_counter()
         for i in range(K):
             for j in range(N):
-                temp_row=0
-                for k in range(q):
-                    temp_row += (B[i][j][k])*2**(-k-1)
+                temp_row = torch.sum(torch.mul(B[i][j], powers))
                 B_temp.append((temp_row,B[i][j],(i,j),torch.sum(B[i][j])))
                 A_temp.append((A[:,i],(i,j)))
-        
+        tb = time.perf_counter()
+
 
         if t == "sorted":
             B_temp.sort(key=sorting_order)
@@ -60,6 +93,10 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         indeces = []
         for i in B_temp:
             indeces.append(i[2])
+
+
+        print(indeces)
+        exit()
 
         B_new = []
         B_signs_new = []
@@ -628,7 +665,7 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     # weight matrix settings
     q = q
     powers = torch.FloatTensor([2**(-i) for i in range(0,q)]).to('cuda')
-
+    
     # adc settings
     b=b
     permutation = permutation
@@ -661,22 +698,22 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     # converting B to digital
     t1=time.time()
     B_digital, args = filling_array(torch.abs(B), q, False)
-    ta = time.perf_counter()
     B_back = torch.sum(torch.mul(B_digital, powers), axis=-1)
     #B_digital, args = filling_array(torch.abs(B), q)
     #B_back = dequantize(torch.sum(torch.mul(B_digital, powers_q), axis=-1), args, q)
     err_mm = torch.sum(1/2*(torch.abs(B) - B_back)**2)    
-
     t2=time.time()
     if prints:
         print('Error due to matrix B conversion: ' + str(err_mm))
         print('Time due to matrix B conversion: ' + str(t2-t1))
-    
     # operating
     # actual MM
     t1=time.time()
-    C_wait, B_new, A_new, means, s, s_n, noise = compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain)
-
+    C_wait, B_new, A_new, means, s, s_n, noise = ef_compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain)
+    #C_wait, B_new, A_new, means, s, s_n, noise = compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain)
+    tb = time.perf_counter()
+    print(tb-ta)
+    exit()
     C_tiles = []
 
     C_after_sum=[]

@@ -39,36 +39,35 @@ def ef_convert_to_neg_bin(x,N):
     result = torch.transpose(result, 0, 2)
     return result
 
-x = 2*torch.rand(1000,1000).to(device)
+x = 2*torch.rand(5,2).to(device)
+a = torch.rand(3,5).to(device)
+c = torch.matmul(a,x)
+print(a)
+print(x)
+print(c)
 q=8
 
-print(x)
-ta = time.perf_counter()
+#A = torch.tensor([1, 2, 3, 4])
+#indices = torch.tensor([1, 0, 3, 2])
+#result = torch.tensor([0, 0, 0, 0])
+#print(result.scatter_(0, indices, A))
+
 result = ef_convert_to_neg_bin(x,q)
-tb = time.perf_counter()
-print(result)
-print(tb-ta)
-result2 = result
 
-print(x)
-ta = time.perf_counter()
-result = []
-for i in range(x.shape[0]):
-    for j in range(x.shape[1]):
-        result.append(convert_to_neg_bin(x[i][j], q))
-result = torch.FloatTensor(result).reshape(x.shape[0],x.shape[1],q).to(device)
-tb = time.perf_counter()
+#sorting mag
 print(result)
-print(tb-ta)
-result1 = result
-
-print((result1 == result2).all())
+shape = result.shape
+stacked = result.reshape((shape[0]*shape[1], shape[2]))
+powers = torch.FloatTensor([2**(-i) for i in range(-1,q-1)]).to('cuda')
+indeces = torch.argsort(torch.sum(torch.mul(powers,stacked), axis=1))
+sorted_stacked = stacked[indeces]
+sorted_array = sorted_stacked.reshape(shape)
+print(sorted_array)
 exit()
+print(torch.sum(stacked, axis=1))
 
-B_digital=[]
-for i in range(x.shape[0]):
-    for j in range(x.shape[1]):
-        B_digital.append(convert_to_neg_bin(x[i][j],q))
-
-B_digital = torch.FloatTensor(B_digital).reshape(x.shape[0],x.shape[1],q).to(device)
-print(B_digital)
+exit()
+val, indeces = torch.sort()
+print(result)
+print(result.shape)
+exit()
