@@ -73,13 +73,13 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         B_transpose = torch.transpose(B, 0, 1)
         B_signs_transpose = B_signs.T
 
-        _, indeces2 = torch.sort(input = torch.sum(torch.mul(powers,B_transpose), axis=2), stable=True)
+        _, indeces = torch.sort(input = torch.sum(torch.mul(powers,B_transpose), axis=2), stable=True)
         stacked = B_transpose.reshape((B_transpose.shape[0]*B_transpose.shape[1], B_transpose.shape[2]))
         stacked_signs = B_signs_transpose.flatten()
         
         shift = torch.mul(torch.arange(N), (K)*torch.ones(N)).to(device)
-        shift = shift.repeat_interleave(K).reshape(indeces2.shape)
-        shifted = (shift + indeces2).flatten()
+        shift = shift.repeat_interleave(K).reshape(indeces.shape)
+        shifted = (shift + indeces).flatten()
         shifted = shifted.type(torch.long)
 
         B_transpose_sorted = stacked[shifted].reshape(B_transpose.shape)
@@ -89,7 +89,7 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         B_signs_new = B_signs_transpose_sorted.T
 
         A_transpose = A.T
-        A_new=A_transpose[indeces2].reshape(N*K,M)
+        A_new=A_transpose[indeces].reshape(N*K,M)
     
 
         A_new = A_new.reshape(N,K,M)
@@ -114,47 +114,33 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         B_new = B
         B_signs_new = B_signs
 
-        B_pim = []
         B_signs_pim = []
-        for i in range(N):
-            for j in range(K):
-                B_pim.append(B_new[j][i])
 
-
-        B_pim = torch.stack(B_pim).reshape((N,K,q)).to(device)
-
-        B_signs_pim = (-1)**B_signs_new.t()
-
-        B_pim_signed = []
-        for k in range (N):
-            for i in range(K):
-                B_pim_signed.append(B_pim[k][i]*B_signs_pim[k][i])
+        B_pim = torch.transpose(B_new, 0, 1)
         
-        B_pim_signed = torch.stack(B_pim_signed).reshape(N,K,q).to(device)
+        B_signs_pim = (-1)**B_signs_new.t()
+        B_signs_pim = B_signs_pim.reshape(B_signs_pim.shape[0],B_signs_pim.shape[1],1).repeat(1,1,q).flatten()
+        B_signs_pim = B_signs_pim.reshape(B_pim.shape)
+        B_pim_signed = torch.mul(B_pim, B_signs_pim)
 
-        results_pims = []
-        results_pims_final = []
-        for j in range (N):
-            for i in range(K):
-                results_pims.append(torch.outer(A_final[:,i], B_pim_signed[j][i]))
-            results_pims_final.append(torch.stack(results_pims).reshape(K, M, q))
-            results_pims=[]
+        A_final = torch.transpose(A_final, 0, 1)
+        C_wait = torch.einsum('ij,bik->bijk', A_final, B_pim_signed)
+        A_final = torch.transpose(A_final, 0, 1)
 
-        tiles = results_pims_final
         #ans = np.sum(results_pims_final,axis=1)
         powers = torch.FloatTensor([2**(-i) for i in range(0,q)]).to(device)
         powers_q = torch.FloatTensor([2**(q-i-1) for i in range(0,q)]).to(device)
         mean_temp = torch.mean(torch.mul(B_pim_signed,powers), axis=2)
-
+        
     s = torch.zeros(q+1).to(device)
     s_n = torch.zeros((N,q+1)).to(device)
 
     s2 = torch.zeros(q+1).to(device)
     s_n2 = torch.zeros((N,q+1)).to(device)
 
-    highest_cols = torch.argmax(abs(B_pim_signed), dim=2)
+    #highest_cols = torch.argmax(abs(B_pim_signed), dim=2)
 
-    s2[highest_cols] += highest_cols
+    #s2[highest_cols] += highest_cols
 
     for k in range(N):
         for i in range(K):
@@ -201,7 +187,7 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         noise_value=0
         for j in range(N):
             for i in range(num_sections):
-                temp = torch.zeros(B_pim_signed_edit[j][i].shape)
+                temp = torch.zeros(B_pim_signed_edit[j][i].shape).to(device)
                 for a in range(temp.size()[0]):
                     for b in range(temp.size()[1]):
                         temp[a][b]=b-a+temp.size()[0]
@@ -250,22 +236,8 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_
         max_2 = torch.max(max_1, max_outputs_3)
     energy=0
 
-    q_step=[]
-    if b_set ==None:
-        for i in range(num_sec):
-            q_step.append(torch.abs(max_2[i])/(torch.pow(2,b_set[i])-1 + 1e-12) + 1e-12)
-    else: 
-        for j in range(N): 
-            for i in range(num_sec): 
-                if b_set[i] == torch.zeros(len(b_set[i])).tolist():
-                    q_step.append(torch.zeros(max_2[j][i].shape))
-                else: 
-                    q_step.append(torch.abs(max_2[j][i])/(torch.pow(2,b_set[i])-1 + 1e-12) + 1e-12)
-
-    #q_step_0 = torch.abs(max_2)/(2**(b)-1) + 1e-12
-    #q_step_1 = torch.abs(max_2)/(2**(b-1)-1) + 1e-12
-    #q_step_2 = torch.abs(max_2)/(2**(b-2)-1) + 1e-12
-    q_step = torch.stack(q_step).reshape(max_2.shape).to(device)
+    b_set = b_set.expand(max_2.shape)
+    q_step=max_2/(torch.pow(2,b_set)-1 + 1e-12) + 1e-12
 
     digital_without_sign = []
     for i in range(C_correct.shape[0]):
@@ -389,11 +361,9 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec,  s_n, 
     results_pims_final=[]
     A = torch.ones(A.shape).to(device)*v_ref
     if permutation == 'random':
-        for j in range(N):
-            for i in range(K):
-                results_pims.append(torch.outer(A[:,i], B_digital[j][i]))
-            results_pims_final.append(torch.stack(results_pims).reshape(K, M, q).to(device))
-            results_pims=[]
+        A = torch.transpose(A, 0, 1)
+        C_wait = torch.einsum('ij,bik->bijk', A, B_digital)
+        A = torch.transpose(A, 0, 1)
     
     else:
         A = torch.transpose(A, 1, 2)
@@ -417,9 +387,9 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec,  s_n, 
         for j in range(N):
             for i in range (num_sec):
                 if i ==num_sec-1:
-                    C_tiles.append(torch.sum(C_wait[j][np.sum(s_n[j][:i], dtype=int):],axis=0))
+                    C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):],axis=0))
                     break
-                C_tiles.append(torch.sum(C_wait[j][np.sum(s_n[j][:i], dtype=int):np.sum(s_n[j][:(i+1)], dtype=int)],axis=0))
+                C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
 
             C_tiles = torch.stack(C_tiles).to(device)
             C_after_sum.append(C_tiles)
@@ -444,16 +414,12 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec,  s_n, 
     return C_wait
 
 def max_pos(A,B_digital, M, K, N, q, permutation, v_ref, perc, num_sec, s_n, opt):
-    results_pims=[]
-    results_pims_final=[]
     B_digital = torch.where(B_digital > 0, 1, 0)
     A = torch.ones(A.shape).to(device)*v_ref
     if permutation == 'random':
-        for j in range(N):
-            for i in range(K):
-                results_pims.append(torch.outer(A[:,i], B_digital[j][i]))
-            results_pims_final.append(torch.stack(results_pims).reshape(K, M, q).to(device))
-            results_pims=[]
+        A = torch.transpose(A, 0, 1)
+        C_wait = torch.einsum('ij,bik->bijk', A, B_digital)
+        A = torch.transpose(A, 0, 1)
     
     else:
         A = torch.transpose(A, 1, 2)
@@ -475,9 +441,9 @@ def max_pos(A,B_digital, M, K, N, q, permutation, v_ref, perc, num_sec, s_n, opt
         for j in range(N):
             for i in range (num_sec):
                 if i ==num_sec-1:
-                    C_tiles.append(torch.sum(C_wait[j][np.sum(s_n[j][:i], dtype=int):],axis=0))
+                    C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):],axis=0))
                     break
-                C_tiles.append(torch.sum(C_wait[j][np.sum(s_n[j][:i], dtype=int):np.sum(s_n[j][:(i+1)], dtype=int)],axis=0))
+                C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
 
             C_tiles = torch.stack(C_tiles).to(device)
             C_after_sum.append(C_tiles)
@@ -520,11 +486,9 @@ def max_neg(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec, s_n, opt)
     B_digital = torch.where(B_digital > 0, -1, B_digital.to(int))
     A = torch.ones(A.shape).to(device)*v_ref
     if permutation == 'random':
-        for j in range(N):
-            for i in range(K):
-                results_pims.append(torch.outer(A[:,i], B_digital[j][i]))
-            results_pims_final.append(torch.stack(results_pims).reshape(K, M, q).to(device))
-            results_pims=[]
+        A = torch.transpose(A, 0, 1)
+        C_wait = torch.einsum('ij,bik->bijk', A, B_digital)
+        A = torch.transpose(A, 0, 1)
     
     else:
         A = torch.transpose(A, 1, 2)
@@ -546,9 +510,9 @@ def max_neg(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec, s_n, opt)
         for j in range(N):
             for i in range (num_sec):
                 if i ==num_sec-1:
-                    C_tiles.append(torch.sum(C_wait[j][np.sum(s_n[j][:i], dtype=int):],axis=0))
+                    C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):],axis=0))
                     break
-                C_tiles.append(torch.sum(C_wait[j][np.sum(s_n[j][:i], dtype=int):np.sum(s_n[j][:(i+1)], dtype=int)],axis=0))
+                C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
 
             C_tiles = torch.stack(C_tiles).to(device)
             C_after_sum.append(C_tiles)
