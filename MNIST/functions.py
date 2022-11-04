@@ -56,12 +56,6 @@ def ef_compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
             sorted_stacked = stacked[indeces]
             B_sorted = sorted_stacked.reshape(B.shape)
         tb = time.perf_counter()
-        print(B_sorted)
-        print(B_signs)
-        print(B_sorted.shape)
-        print(B_signs.shape)
-        print(A)
-        print(indeces)
         exit()
 
 def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
@@ -75,59 +69,13 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
     
     ans = torch.zeros(M,N,q).to(device)
     if t != "random":
-        B_temp = []
-        A_temp = []
         powers = torch.FloatTensor([2**(-i) for i in range(-1,q-1)]).to('cuda')
-        ta = time.perf_counter()
-        for i in range(K):
-            for j in range(N):
-                temp_row = torch.sum(torch.mul(B[i][j], powers))
-                B_temp.append((temp_row,B[i][j],(i,j),torch.sum(B[i][j])))
-                A_temp.append((A[:,i],(i,j)))
-        tb = time.perf_counter()
-        print(tb-ta)
-
-
-        if t == "sorted":
-            B_temp.sort(key=sorting_order)
-        if t == "area":
-            B_temp.sort(key=sorting_area)
-        indeces = []
-        for i in B_temp:
-            indeces.append(i[2])
-
-
-        B_signs_new = []
-        indeces.sort(key=sorting_area)
-        A_new=[]
-        indeces_b=[]
-        ta = time.perf_counter()
-        for i in range(int(len(indeces)/(N))):
-            for k in range(N):
-                B_signs_new.append((B_signs.cpu()[indeces[i+k*K][0], indeces[i+k*K][1]]).to(device))
-        
-        tb = time.perf_counter()
-        print(tb-ta)
-        
-        ta = time.perf_counter()
-
-        #B_signs = B_signs.reshape(B_signs.shape[0], B_signs.shape[1], 1).repeat(1,1,q)
-        print(B)
-        print(B_signs)
         B_transpose = torch.transpose(B, 0, 1)
-        print(B_transpose)
         B_signs_transpose = B_signs.T
-        print(B_signs_transpose)
 
-        #B_signs_transpose = torch.transpose(B_signs, 0, 1)
-
-        indeces2 = torch.argsort(torch.sum(torch.mul(powers,B_transpose), axis=2))
-        print(indeces2)
-        
-        
+        _, indeces2 = torch.sort(input = torch.sum(torch.mul(powers,B_transpose), axis=2), stable=True)
         stacked = B_transpose.reshape((B_transpose.shape[0]*B_transpose.shape[1], B_transpose.shape[2]))
-        #stacked_signs = B_signs_transpose.reshape(B_signs_transpose.shape[0]*B_signs_transpose.shape[1])
-        #stacked_signs = B_signs_transpose.reshape((B_signs_transpose.shape[0]*B_signs_transpose.shape[1], B_signs_transpose.shape[2]))
+        stacked_signs = B_signs_transpose.flatten()
         
         shift = torch.mul(torch.arange(N), (K)*torch.ones(N)).to(device)
         shift = shift.repeat_interleave(K).reshape(indeces2.shape)
@@ -135,43 +83,28 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         shifted = shifted.type(torch.long)
 
         B_transpose_sorted = stacked[shifted].reshape(B_transpose.shape)
-        #B_signs_transpose_sorted = stacked_signs[shifted].reshape(B_signs_transpose.shape)
+        B_signs_transpose_sorted = stacked_signs[shifted].reshape(B_signs_transpose.shape)
 
         B_new = torch.transpose(B_transpose_sorted, 0, 1)
-        #B_signs_new2 = B_signs_transpose_sorted.T
+        B_signs_new = B_signs_transpose_sorted.T
 
-        print('oi')
-        B_signs_new = torch.stack(B_signs_new).reshape(B_signs.shape)
-        #print((B_signs_new==B_signs_new2))
-        print(B_signs_new)
-        #print(B_signs_new2)
-        tb = time.perf_counter()
-        print(tb-ta)
-        
-        for i in range(len(indeces)):
-            A_new.append(torch.FloatTensor(A.cpu()[:, indeces[i][0]]).to(device))
-        A_new = torch.stack(A_new).to(device)
-        A_final = []
-        for i in range(int(len(A_new)/K)):
-            A_final.append(A_new[i*K:(i+1)*K].t())
+        A_transpose = A.T
+        A_new=A_transpose[indeces2].reshape(N*K,M)
     
-        A_final = torch.stack(A_final)
-        
+
+        A_new = A_new.reshape(N,K,M)
+        A_final = torch.transpose(A_new, 1, 2)
 
         B_pim = torch.transpose(B_new, 0, 1)
         B_signs_pim = (-1)**B_signs_new.t()
-        
         B_signs_pim = B_signs_pim.reshape(B_signs_pim.shape[0],B_signs_pim.shape[1],1).repeat(1,1,q).flatten()
         B_signs_pim = B_signs_pim.reshape(B_pim.shape)
         B_pim_signed = torch.mul(B_pim, B_signs_pim)
-        
+
         ta = time.perf_counter()
         A_final = torch.transpose(A_final, 1, 2)
         C_wait = torch.einsum('bij,bik->bijk', A_final, B_pim_signed)
-        tb = time.perf_counter()
-        print(tb-ta)
         A_final = torch.transpose(A_final, 1, 2)
-
         powers = torch.FloatTensor([2**(-i) for i in range(0,q)]).to(device)
         powers_q = torch.FloatTensor([2**(q-i-1) for i in range(0,q)]).to(device)
         mean_temp = torch.mean(torch.mul(B_pim_signed,powers), axis=2)
@@ -216,6 +149,13 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
     s = torch.zeros(q+1).to(device)
     s_n = torch.zeros((N,q+1)).to(device)
 
+    s2 = torch.zeros(q+1).to(device)
+    s_n2 = torch.zeros((N,q+1)).to(device)
+
+    highest_cols = torch.argmax(abs(B_pim_signed), dim=2)
+
+    s2[highest_cols] += highest_cols
+
     for k in range(N):
         for i in range(K):
             for j in range(q):
@@ -227,7 +167,7 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
                 if j==q-1:
                     s_n[k][0]+=1
                     s[0]+=1
-    
+
     if t!='random':
         sections=[]
         for j in range(N):
@@ -456,15 +396,14 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec,  s_n, 
             results_pims=[]
     
     else:
-        for j in range (N):
-            for i in range(K):
-                results_pims.append(torch.outer(A[j][:,i], B_digital[j][i]))
-            results_pims_final.append(torch.stack(results_pims).reshape(K, M, q).to(device))
-            results_pims=[]
+        A = torch.transpose(A, 1, 2)
+        C_wait = torch.einsum('bij,bik->bijk', A, B_digital)
+        A = torch.transpose(A, 1, 2)
         
-    tiles_normal = results_pims_final
+        
+    #tiles_normal = results_pims_final
 
-    C_wait = tiles_normal
+    #C_wait = tiles_normal
     C_tiles = []
     C_after_sum=[]
 
@@ -472,7 +411,8 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec,  s_n, 
     #print([0,int(np.floor((perc[0]/100)*K))])
     #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
     #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
-    C_wait = torch.stack(C_wait).to(device)
+    
+    #C_wait = torch.stack(C_wait).to(device)
     if opt:
         for j in range(N):
             for i in range (num_sec):
@@ -516,22 +456,21 @@ def max_pos(A,B_digital, M, K, N, q, permutation, v_ref, perc, num_sec, s_n, opt
             results_pims=[]
     
     else:
-        for j in range (N):
-            for i in range(K):
-                results_pims.append(torch.outer(A[j][:,i], B_digital[j][i]))
-            results_pims_final.append(torch.stack(results_pims).reshape(K, M, q).to(device))
-            results_pims=[]
+        A = torch.transpose(A, 1, 2)
+        C_wait = torch.einsum('bij,bik->bijk', A, B_digital)
+        A = torch.transpose(A, 1, 2)
     
-    tiles_normal = results_pims_final
+    #tiles_normal = results_pims_final
 
-    C_wait = tiles_normal
+    #C_wait = tiles_normal
     C_tiles = []
     C_after_sum=[]
     #perc = [68.2, 27.2]
     #print([0,int(np.floor((perc[0]/100)*K))])
     #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
     #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
-    C_wait = torch.stack(C_wait).to(device)
+    
+    #C_wait = torch.stack(C_wait).to(device)
     if opt:
         for j in range(N):
             for i in range (num_sec):
@@ -588,15 +527,13 @@ def max_neg(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec, s_n, opt)
             results_pims=[]
     
     else:
-        for j in range (N):
-            for i in range(K):
-                results_pims.append(torch.outer(A[j][:,i], B_digital[j][i]))
-            results_pims_final.append(torch.stack(results_pims).reshape(K, M, q).to(device))
-            results_pims=[]
+        A = torch.transpose(A, 1, 2)
+        C_wait = torch.einsum('bij,bik->bijk', A, B_digital)
+        A = torch.transpose(A, 1, 2)
     
-    tiles_normal = results_pims_final
+    #tiles_normal = results_pims_final
 
-    C_wait = tiles_normal
+    #C_wait = tiles_normal
     C_tiles = []
     C_after_sum=[]
 
@@ -604,7 +541,7 @@ def max_neg(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec, s_n, opt)
     #print([0,int(np.floor((perc[0]/100)*K))])
     #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
     #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
-    C_wait = torch.stack(C_wait).to(device)
+    #C_wait = torch.stack(C_wait).to(device)
     if opt:
         for j in range(N):
             for i in range (num_sec):
@@ -734,10 +671,9 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     # operating
     # actual MM
     t1=time.time()
-    #C_wait, B_new, A_new, means, s, s_n, noise = ef_compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain)
     C_wait, B_new, A_new, means, s, s_n, noise = compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain)
     tb = time.perf_counter()
-    print(tb-ta)
+
 
     C_tiles = []
 
@@ -784,7 +720,6 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
 
     # converting output to digital
     t1=time.time()
-
     if opt==1:
         digital_outputs, n_adcs, energy_value = adc(A_new, B_new, C_wait_opt, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt)
     else:
@@ -825,6 +760,4 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
         print('Obtained result: ' + str(result))
         print('Total error: ' + str(error))
     tb = time.perf_counter()
-    print (tb-ta)
-    exit()
     return result, (error, err_adc), energy_value, active, s, noise, n_adcs

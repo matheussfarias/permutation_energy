@@ -176,15 +176,15 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'so
             f.write("\n")
             f.close()
             f=open('./results/s.txt','a')
-            np.savetxt(f, [s], fmt='%1.3f', newline=", ")
+            np.savetxt(f, s.cpu(), fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             f=open('./results/noise.txt','a')
-            np.savetxt(f, [noise], fmt='%1.3f', newline=", ")
+            np.savetxt(f, [noise.cpu()], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             f=open('./results/n_adcs.txt','a')
-            np.savetxt(f, [n_adcs], fmt='%1.3f', newline=", ")
+            np.savetxt(f, [n_adcs.cpu()], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             t2=time.time()
@@ -223,23 +223,23 @@ class LeNet_5(nn.Module):
         #x = self.conv1(x)
         #x = conv_to_cim(x, self.conv1, num_sec=100, b_set = (8*np.ones((100,8))).tolist())
 
-        x = conv_to_cim(x, self.conv1, prints=True, num_sec=1, b_set = torch.mul(torch.FloatTensor([8, 8, 8, 7, 6, 6, 6, 5]),torch.ones((100,8))).to(device), add_noise = 1, noise_gain = 0.01)
+        x = conv_to_cim(x, self.conv1, prints=False, num_sec=100, b_set = torch.mul(torch.FloatTensor([8, 8, 8, 7, 6, 6, 6, 5]),torch.ones((100,8))).to(device), add_noise = 0, noise_gain = 0)
         x = self.relu1(x)
 
         #x = self.conv2(x)
         #x = conv_to_cim(x, self.conv2, num_sec=1000, b_set = (8*np.ones((1000,8))).tolist())
-        x = conv_to_cim(x, self.conv2, num_sec=1, b_set = (np.multiply(np.array([8, 8, 8, 7, 6, 6, 6, 5]),np.ones((1000,8)))).tolist(), add_noise = 1, noise_gain = 0.01)
+        x = conv_to_cim(x, self.conv2, num_sec=1000, b_set = torch.mul(torch.FloatTensor([8, 8, 8, 7, 6, 6, 6, 5]),torch.ones((1000,8))).to(device), add_noise = 0, noise_gain = 0)
         x = self.relu2(x)
         
         #x = self.conv3(x)
         #x = conv_to_cim(x, self.conv3, num_sec=500, b_set = (8*np.ones((500,8))).tolist())
-        x = conv_to_cim(x, self.conv3, num_sec=1, b_set = (np.multiply(np.array([8, 8, 8, 7, 6, 6, 6, 5]),np.ones((500,8)))).tolist(), add_noise = 1, noise_gain = 0.01)
+        x = conv_to_cim(x, self.conv3, num_sec=500, b_set = torch.mul(torch.FloatTensor([8, 8, 8, 7, 6, 6, 6, 5]),torch.ones((500,8))).to(device), add_noise = 0, noise_gain = 0)
         x = self.relu3(x)
 
         x = x.reshape(-1, 720)
         #x = self.fc1(x)
         #x = fc_to_cim(x, self.fc1, num_sec=720, b_set = (8*np.ones((720,8))).tolist())
-        x = fc_to_cim(x, self.fc1, num_sec=1, b_set = (np.multiply(np.array([8, 8, 8, 7, 6, 6, 6, 5]),np.ones((720,8)))).tolist(), add_noise = 1, noise_gain = 0.01)
+        x = fc_to_cim(x, self.fc1, num_sec=720, b_set = torch.mul(torch.FloatTensor([8, 8, 8, 7, 6, 6, 6, 5]),torch.ones((720,8))).to(device), add_noise = 0, noise_gain = 0)
         return x
 
     def forward_a(self, x):
