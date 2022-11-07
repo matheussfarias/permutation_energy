@@ -224,7 +224,7 @@ class LeNet_5(nn.Module):
         #x = self.conv1(x)
         #x = conv_to_cim(x, self.conv1, num_sec=100, b_set = (8*np.ones((100,8))).tolist())
 
-        x = conv_to_cim(x, self.conv1, opt=1, permutation = 'sorted', prints=True, num_sec=10, b_set = torch.FloatTensor([8, 8, 8, 8, 8, 8, 8, 7]).to(device), add_noise = 0, noise_gain = 0)
+        x = conv_to_cim(x, self.conv1, opt=1, permutation = 'sorted', prints=False, num_sec=10, b_set = torch.FloatTensor([8, 8, 8, 8, 8, 8, 8, 8]).to(device), add_noise = 0, noise_gain = 0)
         x = self.relu1(x)
 
         #x = self.conv2(x)

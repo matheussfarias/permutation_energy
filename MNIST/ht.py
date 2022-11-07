@@ -9,7 +9,7 @@ torch.manual_seed(50)
 # digital A
 M = 2
 K = 4
-N = 6
+N = 3
 
 
 A = torch.randn(M,K)
@@ -35,7 +35,7 @@ C = torch.matmul(A,B)
 print(A.shape)
 print(B.shape)
 print(C.shape)
-result, valor, e, active, s, noise, n_adcs = cim(A.detach().to(device), B.detach().to(device), 1, 12, 8, 12, permutation = 'random', prints=True, perc=(K/1)*np.ones(1), num_sec=2, b_set = torch.mul(torch.FloatTensor([8, 8, 8, 8, 8,8, 8, 7]),torch.ones((1,8))).to(device), opt=0, add_noise=0, noise_gain=0)
+result, valor, e, active, s, noise, n_adcs = cim(A.detach().to(device), B.detach().to(device), 1, 12, 8, 12, permutation = 'random', prints=True, perc=(K/1)*np.ones(1), num_sec=2, b_set = torch.mul(torch.FloatTensor([8, 8, 8, 8, 8,8, 8, 8]),torch.ones((1,8))).to(device), opt=0, add_noise=0, noise_gain=0)
 print(valor)
 print(e)
 print(active)

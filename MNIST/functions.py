@@ -31,45 +31,14 @@ def count_parameters(model):
     print(f"Total Number of Trainable Modules: {modules}")
     return total_params
 
-def ef_compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
-    tiles = [0]
-    M = A.shape[0]
-    K = A.shape[1]
-    N = B.shape[1]
-    q = B.shape[2]
-
-    ans = torch.zeros(M,N,q).to(device)
-    if t != "random":
-        B_temp = []
-        A_temp = []
-        powers = torch.FloatTensor([2**(-i) for i in range(-1,q-1)]).to('cuda')
-        ta = time.perf_counter()
-        shape_B = B.shape
-        if t == "sorted":
-            stacked = B.reshape((B.shape[0]*B.shape[1], B.shape[2]))
-            indeces = torch.argsort(torch.sum(torch.mul(powers,stacked), axis=1))
-            sorted_stacked = stacked[indeces]
-            B_sorted = sorted_stacked.reshape(B.shape)
-        if t == "area":
-            stacked = B.reshape((B.shape[0]*B.shape[1], B.shape[2]))
-            indeces = torch.argsort(torch.sum(stacked, axis=1))
-            sorted_stacked = stacked[indeces]
-            B_sorted = sorted_stacked.reshape(B.shape)
-        tb = time.perf_counter()
-        exit()
-
 def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
-    tiles = [0]
     M = A.shape[0]
     K = A.shape[1]
     N = B.shape[1]
     q = B.shape[2]
 
-    
-    
-    ans = torch.zeros(M,N,q).to(device)
     if t != "random":
-        powers = torch.FloatTensor([2**(-i) for i in range(-1,q-1)]).to('cuda')
+        powers = torch.FloatTensor([2**(-i) for i in range(-1,q-1)]).to(device)
         B_transpose = torch.transpose(B, 0, 1)
         B_signs_transpose = B_signs.T
 
@@ -105,10 +74,7 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         A_final = torch.transpose(A_final, 1, 2)
         C_wait = torch.einsum('bij,bik->bijk', A_final, B_pim_signed)
         A_final = torch.transpose(A_final, 1, 2)
-        powers = torch.FloatTensor([2**(-i) for i in range(0,q)]).to(device)
-        powers_q = torch.FloatTensor([2**(q-i-1) for i in range(0,q)]).to(device)
-        mean_temp = torch.mean(torch.mul(B_pim_signed,powers), axis=2)
-        #ans = np.sum(results_pims_final,axis=1)
+
     else:
         A_final = A
         B_new = B
@@ -127,32 +93,19 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         C_wait = torch.einsum('ij,bik->bijk', A_final, B_pim_signed)
         A_final = torch.transpose(A_final, 0, 1)
 
-        #ans = np.sum(results_pims_final,axis=1)
-        powers = torch.FloatTensor([2**(-i) for i in range(0,q)]).to(device)
-        powers_q = torch.FloatTensor([2**(q-i-1) for i in range(0,q)]).to(device)
-        mean_temp = torch.mean(torch.mul(B_pim_signed,powers), axis=2)
-        
-    s = torch.zeros(q+1).to(device)
-    s_n = torch.zeros((N,q+1)).to(device)
-
-    s2 = torch.zeros(q+1).to(device)
-    s_n2 = torch.zeros((N,q+1)).to(device)
-
-    #highest_cols = torch.argmax(abs(B_pim_signed), dim=2)
-
-    #s2[highest_cols] += highest_cols
-
-    for k in range(N):
-        for i in range(K):
-            for j in range(q):
-                if B_pim_signed[k][i][j]!=0:
-                    s_n[k][q-j]+=1
-                    s[q-j]+=1
-
-                    break
-                if j==q-1:
-                    s_n[k][0]+=1
-                    s[0]+=1
+    ta = time.perf_counter()
+    zeros = torch.sum((B_pim == torch.zeros(B_pim.shape).to(device)).all(dim=2).type(torch.int), axis=1)
+    highest_cols = q - torch.argmax(B_pim, dim=2)
+    v = highest_cols.max()+1
+    id = highest_cols + (v*torch.arange(highest_cols.shape[0]).to(device))[:,None]
+    s_n = torch.bincount(id.ravel(),minlength=v*highest_cols.shape[0]).reshape(-1,v)
+    s = torch.sum(s_n, axis=0)
+    s_n = s_n.T
+    s_n[0] = zeros
+    s_n[-1] -= zeros
+    s_n = s_n.T
+    tb = time.perf_counter()
+    print(tb-ta)
 
     if t!='random':
         sections=[]
@@ -200,7 +153,9 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
                     B_pim_signed_edit[j][i] = B_pim_signed_edit[j][i] + (-1)**((sign > 0.5).type(torch.int))*noise_gain*noise
                 
         B_pim_signed = torch.reshape(B_pim_signed_edit, (N, K, q))
-    return C_wait, B_pim_signed, A_final, mean_temp, s, s_n, noise_value
+    tb = time.perf_counter()
+    print(tb-ta)
+    return C_wait, B_pim_signed, A_final, 0, s, s_n, noise_value
 
 def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt):
     N = B_digital.shape[0]
@@ -238,88 +193,19 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_
 
     b_set = b_set.expand(max_2.shape)
     q_step=max_2/(torch.pow(2,b_set)-1 + 1e-12) + 1e-12
+    digital_without_sign = torch.abs(torch.round(C_correct/(q_step + 1e-12))*q_step)
 
-    digital_without_sign = []
-    for i in range(C_correct.shape[0]):
-        for j in range(num_sec):
-            digital_without_sign.append(torch.abs(torch.round(C_correct[i][j]/(q_step[i][j]+1e-12))*q_step[i][j]))
-        #digital_without_sign.append(torch.abs(torch.round(C_correct[i][0]/q_step[0][i][0])*q_step[0][i][0]))
-        #digital_without_sign.append(torch.abs(torch.round(C_correct[i][1]/q_step[1][i][1])*q_step[1][i][1]))
-        #digital_without_sign.append(torch.abs(torch.round(C_correct[i][2]/q_step[2][i][2])*q_step[2][i][2]))
-    digital_without_sign = torch.stack(digital_without_sign).reshape(C_correct.shape).to(device)
-    energy = 0
-    s = np.zeros(q+1)
-    z = np.zeros(q+1)
-    n_adcs=0
-
-    if b_set==None:
-        for j in range(C_correct.shape[0]):
-            sec = (torch.sum(C_correct[j],axis=1) != 0).type(torch.int)
-            for i in range(num_sec):
-                energy+=torch.sum(sec[i])*2**(b-i)
-                #sum = torch.sum(sec[i])
-                #s[sum]+=1
-                #print(len(sec[i]))
-                #exit()
-                #for k in range(len(sec[i])):
-                #    if sec[i][k]==1:
-                #        z[q-k]+=1
-                #        exit()
-                #        break
-                #    else:
-                #        z[0]+=1
-                #print(sum)
-                #print(s)
-                #print(sec)
-
-    else:
-        for j in range(C_correct.shape[0]):
-            sec = (torch.sum(C_correct[j],axis=1) != 0).type(torch.int)
-            for i in range(num_sec):
-                energy+=torch.sum(torch.mul(sec[i],torch.pow(2, b_set[i])))
-                n_adcs+=torch.sum((sec[i]>0).type(torch.int))
-                #sum = torch.sum(sec[i])
-                #s[sum]+=1
-                #for k in range(len(sec[i])):
-                #    if sec[i][k]==1:
-                #        z[q-k]+=1
-                #        break
-                #    if k == q-1:
-                #        z[0]+=1
-        #print(s)
-        #print(z)
-        #exit()
+    sec = (torch.sum(C_correct, axis=2)!=0).type(torch.int)
+    b_set = b_set.flatten()[:q]
+    b_set = b_set.expand(sec.shape)
+    energy = torch.sum(torch.mul(sec,torch.pow(2, b_set)))
+    n_adcs = torch.sum((sec>0).type(torch.int))
 
     digital_outputs = torch.zeros(digital_without_sign.shape).to(device)
     output_signs = (C_correct<0).type(torch.int)
     digital_outputs = torch.mul(digital_without_sign, (-1)**output_signs).to(torch.float).to(device)
 
     return digital_outputs, n_adcs, energy
-
-def quantize(x,q):
-    low = torch.min(x)
-    x_shifted = (x-low)
-    high = torch.max(x_shifted)
-    x_shifted_scaled = x_shifted*(2**q-1)/high
-    x_quantized = (torch.floor(x_shifted_scaled.detach().clone()+.5)).type(torch.int16)
-    return x_quantized, (low, high)
-
-def dequantize(x, extra_args, q):
-    low, high = extra_args 
-    signs = (x<0).type(torch.int)
-    x_shifted = abs(x).type(torch.float32)*high/(2**q-1) 
-    x = x_shifted + low
-    x = np.multiply(x,(-1)**signs)
-    return x 
-
-def convert_to_bin(x,q):
-    x = x.item()
-    result=[]
-    for i in range(q):
-        result.append(x%2)
-        x=x//2
-    result.reverse()
-    return result
 
 def ef_convert_to_neg_bin(x,N):
     result = []
@@ -338,27 +224,7 @@ def ef_convert_to_neg_bin(x,N):
     result = torch.transpose(result, 0, 2)
     return result
 
-def filling_array(x, q, powers_2 = False):
-    B_digital=[]
-    ta = time.perf_counter()
-    if powers_2:
-        quantized, args = quantize(x,q)
-        #dequantized = dequantize(quantized,args,q)
-        for i in range(x.shape[0]):
-            for j in range(x.shape[1]):
-                B_digital.append(convert_to_bin(quantized[i][j],q))
-        return torch.tensor(B_digital).reshape(x.shape[0],x.shape[1],q).to(device), args
-    else:
-        #for i in range(x.shape[0]):
-        #    for j in range(x.shape[1]):
-        #        B_digital.append(convert_to_neg_bin(x[i][j],q))
-        #return torch.FloatTensor(B_digital).reshape(x.shape[0],x.shape[1],q).to(device), 0
-        return ef_convert_to_neg_bin(x,q), 0
-
-
 def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec,  s_n, opt):
-    results_pims=[]
-    results_pims_final=[]
     A = torch.ones(A.shape).to(device)*v_ref
     if permutation == 'random':
         A = torch.transpose(A, 0, 1)
@@ -370,25 +236,12 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec,  s_n, 
         C_wait = torch.einsum('bij,bik->bijk', A, B_digital)
         A = torch.transpose(A, 1, 2)
         
-        
-    #tiles_normal = results_pims_final
-
-    #C_wait = tiles_normal
     C_tiles = []
     C_after_sum=[]
 
-    #perc = [68.2, 27.2]
-    #print([0,int(np.floor((perc[0]/100)*K))])
-    #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
-    #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
-    
-    #C_wait = torch.stack(C_wait).to(device)
     if opt:
         for j in range(N):
             for i in range (num_sec):
-                if i ==num_sec-1:
-                    C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):],axis=0))
-                    break
                 C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
 
             C_tiles = torch.stack(C_tiles).to(device)
@@ -398,18 +251,6 @@ def max_normal(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec,  s_n, 
     else:    
         C_wait = C_wait.reshape(N, num_sec, int(K/num_sec), M, q)
         C_wait = torch.sum(C_wait, axis=2)
-        #
-        #for j in range(N):
-        #    for i in range (num_sec):
-        #        if i ==num_sec-1:
-        #            C_tiles.append(torch.sum(C_wait[j][np.sum(perc[:i], dtype=int):],axis=0))
-        #            break
-        #        C_tiles.append(torch.sum(C_wait[j][np.sum(perc[:i], dtype=int):np.sum(perc[:(i+1)], dtype=int)],axis=0))
-        #
-        #    C_tiles = torch.stack(C_tiles).to(device)
-        #    C_after_sum.append(C_tiles)
-        #    C_tiles=[]
-        #C_wait = torch.stack(C_after_sum).reshape(N,num_sec,M,q).to(device)
 
     return C_wait
 
@@ -426,23 +267,12 @@ def max_pos(A,B_digital, M, K, N, q, permutation, v_ref, perc, num_sec, s_n, opt
         C_wait = torch.einsum('bij,bik->bijk', A, B_digital)
         A = torch.transpose(A, 1, 2)
     
-    #tiles_normal = results_pims_final
-
-    #C_wait = tiles_normal
     C_tiles = []
     C_after_sum=[]
-    #perc = [68.2, 27.2]
-    #print([0,int(np.floor((perc[0]/100)*K))])
-    #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
-    #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
     
-    #C_wait = torch.stack(C_wait).to(device)
     if opt:
         for j in range(N):
             for i in range (num_sec):
-                if i ==num_sec-1:
-                    C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):],axis=0))
-                    break
                 C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
 
             C_tiles = torch.stack(C_tiles).to(device)
@@ -452,37 +282,10 @@ def max_pos(A,B_digital, M, K, N, q, permutation, v_ref, perc, num_sec, s_n, opt
     else:
         C_wait = C_wait.reshape(N, num_sec, int(K/num_sec), M, q)
         C_wait = torch.sum(C_wait, axis=2)
-        #for j in range(N):
-        #    for i in range (num_sec):
-        #        if i ==num_sec-1:
-        #            C_tiles.append(torch.sum(C_wait[j][np.sum(perc[:i], dtype=int):],axis=0))
-        #            break
-        #        C_tiles.append(torch.sum(C_wait[j][np.sum(perc[:i], dtype=int):np.sum(perc[:(i+1)], dtype=int)],axis=0))
-        #
-        #    C_tiles = torch.stack(C_tiles).to(device)
-        #    C_after_sum.append(C_tiles)
-        #    C_tiles=[]
-        #C_wait = torch.stack(C_after_sum).reshape(N,num_sec,M,q).to(device)
-    '''
-    C_wait = tiles_normal
-    C_tiles = []
-    C_after_sum=[]
-    for j in range(N):
-        C_tiles.append(torch.sum(C_wait[j][0:1+int(np.floor((perc[0]/100)*K))],axis=0))
-        C_tiles.append(torch.sum(C_wait[j][int(np.ceil((perc[0]/100)*K)):1+int(np.floor(((perc[0]+perc[1])/100)*K))],axis=0))
-        C_tiles.append(torch.sum(C_wait[j][int(np.ceil(((perc[0]+perc[1])/100)*K)):],axis=0))
-
-        C_tiles = torch.stack(C_tiles).to(device)
-        C_after_sum.append(C_tiles)
-        C_tiles=[]
-
-    C_wait1 = torch.stack(C_after_sum).reshape(N,3,M,q).to(device)
-    '''
+        
     return C_wait
 
 def max_neg(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec, s_n, opt):
-    results_pims=[]
-    results_pims_final=[]
     B_digital = torch.where(B_digital > 0, -1, B_digital.to(int))
     A = torch.ones(A.shape).to(device)*v_ref
     if permutation == 'random':
@@ -495,23 +298,12 @@ def max_neg(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec, s_n, opt)
         C_wait = torch.einsum('bij,bik->bijk', A, B_digital)
         A = torch.transpose(A, 1, 2)
     
-    #tiles_normal = results_pims_final
-
-    #C_wait = tiles_normal
     C_tiles = []
     C_after_sum=[]
 
-    #perc = [68.2, 27.2]
-    #print([0,int(np.floor((perc[0]/100)*K))])
-    #print([int(np.ceil((perc[0]/100)*K)),int(np.floor(((perc[0]+perc[1])/100)*K))])
-    #print([int(np.ceil(((perc[0]+perc[1])/100)*K)),K])
-    #C_wait = torch.stack(C_wait).to(device)
     if opt:
         for j in range(N):
             for i in range (num_sec):
-                if i ==num_sec-1:
-                    C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):],axis=0))
-                    break
                 C_tiles.append(torch.sum(C_wait[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
 
             C_tiles = torch.stack(C_tiles).to(device)
@@ -521,47 +313,12 @@ def max_neg(A,B_digital, M, K, N, q, permutation, v_ref,perc, num_sec, s_n, opt)
     else:
         C_wait = C_wait.reshape(N, num_sec, int(K/num_sec), M, q)
         C_wait = torch.sum(C_wait, axis=2)
-        #for j in range(N):
-        #    for i in range (num_sec):
-        #        if i ==num_sec-1:
-        #            C_tiles.append(torch.sum(C_wait[j][np.sum(perc[:i], dtype=int):],axis=0))
-        #            break
-        #        C_tiles.append(torch.sum(C_wait[j][np.sum(perc[:i], dtype=int):np.sum(perc[:(i+1)], dtype=int)],axis=0))
-        #
-        #    C_tiles = torch.stack(C_tiles).to(device)
-        #    C_after_sum.append(C_tiles)
-        #    C_tiles=[]
-        #C_wait = torch.stack(C_after_sum).reshape(N,num_sec,M,q).to(device)
-    
-    return C_wait
 
-def convert_to_neg_bin(x,N):
-    result=[]
-    i=0
-    if x>=1:
-        x=x-1
-        result.append(1)
-    else:
-        result.append(0)
-    while(i<N-1):
-        if x*2<1:
-            result.append(0)
-            x=x*2
-        else:
-            result.append(1)
-            x=x*2 - 1
-        i+=1
-    return result
+    return C_wait
 
 def dac(x,d,v_ref):
     maximum = torch.max(x)
     return torch.round((x/(maximum+1e-12))*(2**d-1))*v_ref/(2**d-1), maximum, v_ref
-
-def sorting_order(A):
-    return A[0] #sorting by lower to higher
-
-def sorting_area(A):
-    return A[-1] #sorting by number of 1s
 
 def stochastic_rounding(x):
     floor = torch.floor(x)
@@ -578,8 +335,6 @@ def stochastic_rounding(x):
             f_x[i] = torch.ceil(f_x[i])
     return f_x.reshape(shape_prev)
 
-
-
 def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, add_noise, noise_gain):
     ta = time.perf_counter()
     if prints:
@@ -590,8 +345,8 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
 
     # weight matrix settings
     q = q
-    powers = torch.FloatTensor([2**(-i) for i in range(0,q)]).to('cuda')
-    
+    powers = torch.FloatTensor([2**(-i) for i in range(0,q)]).to(device)
+
     # adc settings
     b=b
     permutation = permutation
@@ -611,32 +366,34 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
 
     # correct result
     C = torch.matmul(A,B).to(device)
+    tb=time.perf_counter()
+
     # conversions
     # converting A to analog
-    t1=time.time()
+    t1=time.perf_counter()
+
     A_analog, maximum, v_ref = dac(A,d,v_ref)
     A_back = A_analog*(maximum/v_ref)
     err_dac = torch.sum(1/2*(A_back - A)**2)
-    t2=time.time()
+    t2=time.perf_counter()
     if prints:
         print('\nError due to DAC: ' + str(err_dac))
         print('Time due to DAC: ' + str(t2-t1))
     # converting B to digital
-    t1=time.time()
-    B_digital, args = filling_array(torch.abs(B), q, False)
+    t1=time.perf_counter()
+    B_digital = ef_convert_to_neg_bin(torch.abs(B), q)
     B_back = torch.sum(torch.mul(B_digital, powers), axis=-1)
-    #B_digital, args = filling_array(torch.abs(B), q)
-    #B_back = dequantize(torch.sum(torch.mul(B_digital, powers_q), axis=-1), args, q)
     err_mm = torch.sum(1/2*(torch.abs(B) - B_back)**2)    
-    t2=time.time()
+    t2=time.perf_counter()
     if prints:
         print('Error due to matrix B conversion: ' + str(err_mm))
         print('Time due to matrix B conversion: ' + str(t2-t1))
     # operating
     # actual MM
-    t1=time.time()
+    t1=time.perf_counter()
     C_wait, B_new, A_new, means, s, s_n, noise = compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain)
     tb = time.perf_counter()
+    print(tb-ta)
 
 
     C_tiles = []
@@ -644,6 +401,7 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     C_after_sum=[]
 
     C_wait_opt = C_wait
+    C_wait_opt2 = C_wait
     
     C_wait = C_wait.reshape(N, num_sec, int(K/num_sec), M, q)
     C_wait = torch.sum(C_wait, axis=2)
@@ -653,34 +411,45 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     C_after_sum=[]
     for j in range(N):
         for i in range (q+1):
-            if i ==q:
-                C_tiles.append(torch.sum(C_wait_opt[j][int(torch.sum(s_n[j][:i])):],axis=0))
-                break
             C_tiles.append(torch.sum(C_wait_opt[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
         C_tiles = torch.stack(C_tiles).to(device)
         C_after_sum.append(C_tiles)
         C_tiles=[]
     C_wait_opt = torch.stack(C_after_sum).reshape(N,q+1,M,q).to(device)
-    
 
+    C_tiles = []
+    C_after_sum=[]
+    j = 3
+    i = 5
+    print(C_wait_opt2)
+    print(C_wait_opt2.shape)
+    print(s_n)
+    print(s_n.T)
+    print(torch.sum(C_wait_opt2[:][int(torch.sum(s_n[:][:i])):int(torch.sum(s_n[:][:(i+1)]))],axis=0))
+    #print(C_wait_opt2[int(torch.sum(s_n[:][:i])):int(torch.sum(s_n[:][:(i+1)]))])
+    exit()
+    print(torch.sum(C_wait_opt2[:][int(torch.sum(s_n[:][:i])):int(torch.sum(s_n[:][:(i+1)]))],axis=0)[j].shape)
+    print(torch.sum(C_wait_opt2[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0).shape)
+    exit()
+    for i in range (q+1):
+        C_tiles.append(torch.sum(C_wait_opt2[:][int(torch.sum(s_n[:][:i])):int(torch.sum(s_n[:][:(i+1)]))],axis=0))
+    C_wait_opt2 = torch.stack(C_tiles).reshape(N,q+1,M,q).to(device)
     
+    print(C_wait_opt == C_wait_opt2)
     t2=time.time()
+    exit()
     if prints:
         print('Time due to MM: ' + str(t2-t1))
 
     # scaling for each column power
 
     if opt==1:
-        #C_wait2 = torch.multiply(C_wait_opt, powers_q)
         C_wait2 = torch.multiply(C_wait_opt, powers)
         num_sec = q+1
     else:
-        #C_wait2 = torch.multiply(C_wait, powers_q)
         C_wait2 = torch.multiply(C_wait, powers)
     C_compare = torch.sum(C_wait2, axis=1)
 
-    #C_wait2 = torch.multiply(C_wait, powers_q)
-    #C_compare = torch.sum(dequantize(C_wait2,args,q), axis=1)
 
     # converting output to digital
     t1=time.time()
@@ -688,16 +457,10 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
         digital_outputs, n_adcs, energy_value = adc(A_new, B_new, C_wait_opt, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt)
     else:
         digital_outputs, n_adcs, energy_value = adc(A_new, B_new, C_wait, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt)
-    #digital_outputs = torch.sum(dequantize(digital_outputs,args,q), axis=1)
-    #digital_outputs = torch.multiply(digital_outputs, powers_q)
     digital_outputs = torch.multiply(digital_outputs, powers)
     digital_outputs = torch.sum(digital_outputs, axis=1)
-    #print(digital_outputs)
-    #print(C_compare)
-    #print(digital_outputs - C_compare)
     err_adc = torch.sum(1/2*(digital_outputs - C_compare)**2)
 
-    #print(err_adc)
     t2=time.time()
     if prints:
         print('Error due to ADC: ' + str(err_adc))
@@ -705,11 +468,9 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
         print('Time due to ADC: ' + str(t2-t1))
 
     # horizontal add
-    #C_wait3 = dequantize(torch.sum(digital_outputs, axis=-1), args,q)
     C_wait3 = torch.sum(digital_outputs, axis=-1)
 
     # uncomment if dont want to use adc
-    #C_wait3 = dequantize(torch.sum(C_compare,axis=-1), args, q)
     #C_wait3 = torch.sum(C_compare,axis=-1)
 
     # converting output back to digital
