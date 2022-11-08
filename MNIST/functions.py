@@ -70,7 +70,6 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         B_signs_pim = B_signs_pim.reshape(B_pim.shape)
         B_pim_signed = torch.mul(B_pim, B_signs_pim)
 
-        ta = time.perf_counter()
         A_final = torch.transpose(A_final, 1, 2)
         C_wait = torch.einsum('bij,bik->bijk', A_final, B_pim_signed)
         A_final = torch.transpose(A_final, 1, 2)
@@ -93,7 +92,6 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         C_wait = torch.einsum('ij,bik->bijk', A_final, B_pim_signed)
         A_final = torch.transpose(A_final, 0, 1)
 
-    ta = time.perf_counter()
     zeros = torch.sum((B_pim == torch.zeros(B_pim.shape).to(device)).all(dim=2).type(torch.int), axis=1)
     highest_cols = q - torch.argmax(B_pim, dim=2)
     v = highest_cols.max()+1
@@ -104,57 +102,55 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
     s_n[0] = zeros
     s_n[-1] -= zeros
     s_n = s_n.T
-    tb = time.perf_counter()
-    print(tb-ta)
 
-    if t!='random':
-        sections=[]
-        for j in range(N):
-            sec=[]
-            for i in range (q+1):
-                if i ==q:
-                    sec.append(B_pim_signed[j][int(torch.sum(s_n[j][:i])):])
-                    break
-                sec.append(B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))])
-            sections.append(sec)
-        noise_value=0
-        for j in range(N):
-            for i in range(q+1):
-                if sections[j][i].size()[0]!=0:
-                    temp = torch.zeros(sections[j][i].shape).to(device)
+    noise_value = 0
+    if noise_value != 0:
+        if t!='random':
+            sections=[]
+            for j in range(N):
+                sec=[]
+                for i in range (q+1):
+                    if i ==q:
+                        sec.append(B_pim_signed[j][int(torch.sum(s_n[j][:i])):])
+                        break
+                    sec.append(B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))])
+                sections.append(sec)
+            noise_value=0
+            for j in range(N):
+                for i in range(q+1):
+                    if sections[j][i].size()[0]!=0:
+                        temp = torch.zeros(sections[j][i].shape).to(device)
+                        for a in range(temp.size()[0]):
+                            for b in range(temp.size()[1]):
+                                temp[a][b]=b-a+temp.size()[0]
+
+                        posi_1 = (torch.mul(abs(sections[j][i]),temp)-(q-i)).to(device)
+                        posi_2 = (posi_1>=0).type(torch.int)
+                        noise = abs(torch.mul(posi_1, posi_2))
+                        noise_value += torch.sum(noise/(torch.sum(abs(sections[j][i]))+1e-12))
+                        if add_noise:
+                            sign = torch.rand(noise.shape).to(device)
+                            B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))] += (-1)**((sign > 0.5).type(torch.int8))*noise_gain*noise
+        else:
+            num_sections = 2
+            sections=[]
+            B_pim_signed_edit = torch.reshape(B_pim_signed, (N, num_sections, int(K/num_sections), q))
+            noise_value=0
+            for j in range(N):
+                for i in range(num_sections):
+                    temp = torch.zeros(B_pim_signed_edit[j][i].shape).to(device)
                     for a in range(temp.size()[0]):
                         for b in range(temp.size()[1]):
                             temp[a][b]=b-a+temp.size()[0]
-
-                    posi_1 = (torch.mul(abs(sections[j][i]),temp)-(q-i)).to(device)
+                    posi_1 = torch.mul(abs(B_pim_signed_edit[j][i]),temp)
                     posi_2 = (posi_1>=0).type(torch.int)
                     noise = abs(torch.mul(posi_1, posi_2))
-                    noise_value += torch.sum(noise/(torch.sum(abs(sections[j][i]))+1e-12))
+                    noise_value += torch.sum(noise/(torch.sum(abs(B_pim_signed_edit[j][i])))+1e-12)
                     if add_noise:
-                        sign = torch.rand(noise.shape).to(device)
-                        B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))] += (-1)**((sign > 0.5).type(torch.int8))*noise_gain*noise
-    else:
-        num_sections = 2
-        sections=[]
-        B_pim_signed_edit = torch.reshape(B_pim_signed, (N, num_sections, int(K/num_sections), q))
-        noise_value=0
-        for j in range(N):
-            for i in range(num_sections):
-                temp = torch.zeros(B_pim_signed_edit[j][i].shape).to(device)
-                for a in range(temp.size()[0]):
-                    for b in range(temp.size()[1]):
-                        temp[a][b]=b-a+temp.size()[0]
-                posi_1 = torch.mul(abs(B_pim_signed_edit[j][i]),temp)
-                posi_2 = (posi_1>=0).type(torch.int)
-                noise = abs(torch.mul(posi_1, posi_2))
-                noise_value += torch.sum(noise/(torch.sum(abs(B_pim_signed_edit[j][i])))+1e-12)
-                if add_noise:
-                    sign = torch.rand(noise.shape)
-                    B_pim_signed_edit[j][i] = B_pim_signed_edit[j][i] + (-1)**((sign > 0.5).type(torch.int))*noise_gain*noise
-                
-        B_pim_signed = torch.reshape(B_pim_signed_edit, (N, K, q))
-    tb = time.perf_counter()
-    print(tb-ta)
+                        sign = torch.rand(noise.shape)
+                        B_pim_signed_edit[j][i] = B_pim_signed_edit[j][i] + (-1)**((sign > 0.5).type(torch.int))*noise_gain*noise
+                    
+            B_pim_signed = torch.reshape(B_pim_signed_edit, (N, K, q))
     return C_wait, B_pim_signed, A_final, 0, s, s_n, noise_value
 
 def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt):
@@ -336,7 +332,6 @@ def stochastic_rounding(x):
     return f_x.reshape(shape_prev)
 
 def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, add_noise, noise_gain):
-    ta = time.perf_counter()
     if prints:
         print('Starting CIMulator...\n')
     # dac settings
@@ -366,93 +361,58 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
 
     # correct result
     C = torch.matmul(A,B).to(device)
-    tb=time.perf_counter()
 
     # conversions
     # converting A to analog
-    t1=time.perf_counter()
-
+    t1 = time.perf_counter()
     A_analog, maximum, v_ref = dac(A,d,v_ref)
     A_back = A_analog*(maximum/v_ref)
     err_dac = torch.sum(1/2*(A_back - A)**2)
-    t2=time.perf_counter()
+    t2 = time.perf_counter()
     if prints:
         print('\nError due to DAC: ' + str(err_dac))
         print('Time due to DAC: ' + str(t2-t1))
+    
     # converting B to digital
-    t1=time.perf_counter()
+    t1 = time.perf_counter()
     B_digital = ef_convert_to_neg_bin(torch.abs(B), q)
     B_back = torch.sum(torch.mul(B_digital, powers), axis=-1)
-    err_mm = torch.sum(1/2*(torch.abs(B) - B_back)**2)    
-    t2=time.perf_counter()
+    err_mm = torch.sum(1/2*(torch.abs(B) - B_back)**2)
+    t2 = time.perf_counter()    
     if prints:
         print('Error due to matrix B conversion: ' + str(err_mm))
         print('Time due to matrix B conversion: ' + str(t2-t1))
     # operating
     # actual MM
-    t1=time.perf_counter()
+    t1 = time.perf_counter()
     C_wait, B_new, A_new, means, s, s_n, noise = compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain)
-    tb = time.perf_counter()
-    print(tb-ta)
-
-
-    C_tiles = []
-
-    C_after_sum=[]
-
-    C_wait_opt = C_wait
-    C_wait_opt2 = C_wait
-    
-    C_wait = C_wait.reshape(N, num_sec, int(K/num_sec), M, q)
-    C_wait = torch.sum(C_wait, axis=2)
-    
-    C_tiles = []
-    
-    C_after_sum=[]
-    for j in range(N):
-        for i in range (q+1):
-            C_tiles.append(torch.sum(C_wait_opt[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
-        C_tiles = torch.stack(C_tiles).to(device)
-        C_after_sum.append(C_tiles)
-        C_tiles=[]
-    C_wait_opt = torch.stack(C_after_sum).reshape(N,q+1,M,q).to(device)
-
-    C_tiles = []
-    C_after_sum=[]
-    j = 3
-    i = 5
-    print(C_wait_opt2)
-    print(C_wait_opt2.shape)
-    print(s_n)
-    print(s_n.T)
-    print(torch.sum(C_wait_opt2[:][int(torch.sum(s_n[:][:i])):int(torch.sum(s_n[:][:(i+1)]))],axis=0))
-    #print(C_wait_opt2[int(torch.sum(s_n[:][:i])):int(torch.sum(s_n[:][:(i+1)]))])
-    exit()
-    print(torch.sum(C_wait_opt2[:][int(torch.sum(s_n[:][:i])):int(torch.sum(s_n[:][:(i+1)]))],axis=0)[j].shape)
-    print(torch.sum(C_wait_opt2[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0).shape)
-    exit()
-    for i in range (q+1):
-        C_tiles.append(torch.sum(C_wait_opt2[:][int(torch.sum(s_n[:][:i])):int(torch.sum(s_n[:][:(i+1)]))],axis=0))
-    C_wait_opt2 = torch.stack(C_tiles).reshape(N,q+1,M,q).to(device)
-    
-    print(C_wait_opt == C_wait_opt2)
-    t2=time.time()
-    exit()
+    t2 = time.perf_counter()
     if prints:
         print('Time due to MM: ' + str(t2-t1))
 
     # scaling for each column power
-
+    t1 = time.perf_counter()
     if opt==1:
+        C_tiles = []
+        C_after_sum=[]
+        C_wait_opt = C_wait
+        for j in range(N):
+            for i in range (q+1):
+                C_tiles.append(torch.sum(C_wait_opt[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))],axis=0))
+            C_tiles = torch.stack(C_tiles).to(device)
+            C_after_sum.append(C_tiles)
+            C_tiles=[]
+        C_wait_opt = torch.stack(C_after_sum).reshape(N,q+1,M,q).to(device)
         C_wait2 = torch.multiply(C_wait_opt, powers)
         num_sec = q+1
     else:
+        C_wait = C_wait.reshape(N, num_sec, int(K/num_sec), M, q)
+        C_wait = torch.sum(C_wait, axis=2)
         C_wait2 = torch.multiply(C_wait, powers)
     C_compare = torch.sum(C_wait2, axis=1)
 
 
     # converting output to digital
-    t1=time.time()
     if opt==1:
         digital_outputs, n_adcs, energy_value = adc(A_new, B_new, C_wait_opt, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt)
     else:
@@ -460,8 +420,7 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     digital_outputs = torch.multiply(digital_outputs, powers)
     digital_outputs = torch.sum(digital_outputs, axis=1)
     err_adc = torch.sum(1/2*(digital_outputs - C_compare)**2)
-
-    t2=time.time()
+    t2 = time.perf_counter()
     if prints:
         print('Error due to ADC: ' + str(err_adc))
         print('Energy due to ADC: ' + str(energy_value))
@@ -484,5 +443,4 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
         print('Expected result: ' + str(C))
         print('Obtained result: ' + str(result))
         print('Total error: ' + str(error))
-    tb = time.perf_counter()
     return result, (error, err_adc), energy_value, active, s, noise, n_adcs
