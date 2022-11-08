@@ -13,6 +13,13 @@ import numpy as np
 import time
 from functions import *
 
+cuda_act = True
+
+if cuda_act == True:
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+else:
+    device = torch.device('cpu')
+
 def preprocessing(x, w, padding, stride):
     inp_unf = torch.nn.functional.unfold(x, (w.shape[2], w.shape[3]), padding = padding, stride=stride)
     A = inp_unf.transpose(1, 2)
@@ -88,11 +95,11 @@ def fc_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'rand
             f.write("\n")
             f.close()
             f=open('./results/s.txt','a')
-            np.savetxt(f, [s], fmt='%1.3f', newline=", ")
+            np.savetxt(f, s.cpu(), fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             f=open('./results/n_adcs.txt','a')
-            np.savetxt(f, [n_adcs], fmt='%1.3f', newline=", ")
+            np.savetxt(f, [n_adcs.cpu()], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             t2=time.time()
@@ -138,29 +145,29 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'so
     if grid:
         for i in range(int(opt_grind*partial_result.shape[0])):
             print('Current: '+ str(i))
-            t1=time.time()
-            result, valor, energy_value, active, s, noise, n_adcs = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=prints, perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
-            f=open('./grid/energy.txt','a')
+            t1 = time.perf_counter()
+            result, valor, energy_value, active, s, noise, n_adcs = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=prints,perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
+            f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
-            f=open('./grid/active.txt','a')
+            f=open('./results/active.txt','a')
             np.savetxt(f, [active], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
-            f=open('./grid/noise.txt','a')
+            f=open('./results/s.txt','a')
+            np.savetxt(f, s.cpu(), fmt='%1.3f', newline=", ")
+            f.write("\n")
+            f.close()
+            f=open('./results/noise.txt','a')
             np.savetxt(f, [noise], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
-            f=open('./grid/s.txt','a')
-            np.savetxt(f, [s], fmt='%1.3f', newline=", ")
+            f=open('./results/n_adcs.txt','a')
+            np.savetxt(f, [n_adcs.cpu()], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
-            f=open('./grid/n_adcs.txt','a')
-            np.savetxt(f, [n_adcs], fmt='%1.3f', newline=", ")
-            f.write("\n")
-            f.close()
-            t2=time.time()
+            t2=time.perf_counter()
             print(t2-t1)
             performances.append(valor)
             result_total.append(result)
@@ -173,7 +180,7 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'so
     else:
         for i in range(partial_result.shape[0]):
             print('Current: '+ str(i))
-            t1=time.time()
+            t1 = time.perf_counter()
             result, valor, energy_value, active, s, noise, n_adcs = cim(A[i].detach(), B.detach(), v_ref, d, wq, adc, permutation = permutation, prints=prints,perc=perc, num_sec=num_sec, b_set=b_set, opt=opt, add_noise=add_noise, noise_gain=noise_gain)
             f=open('./results/energy.txt','a')
             np.savetxt(f, [int(energy_value)], fmt='%1.3f', newline=", ")
@@ -184,7 +191,7 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'so
             f.write("\n")
             f.close()
             f=open('./results/s.txt','a')
-            np.savetxt(f, [s], fmt='%1.3f', newline=", ")
+            np.savetxt(f, s.cpu(), fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
             f=open('./results/noise.txt','a')
@@ -192,10 +199,10 @@ def conv_to_cim(x, layer, v_ref = 1, d = 12, wq = 8, adc = 12, permutation = 'so
             f.write("\n")
             f.close()
             f=open('./results/n_adcs.txt','a')
-            np.savetxt(f, [n_adcs], fmt='%1.3f', newline=", ")
+            np.savetxt(f, [n_adcs.cpu()], fmt='%1.3f', newline=", ")
             f.write("\n")
             f.close()
-            t2=time.time()
+            t2=time.perf_counter()
             print(t2-t1)
             performances.append(valor)
             result_total.append(result)
@@ -274,20 +281,20 @@ class ResNetMod(nn.Module):
     def forward(self, x):
         #out = self.conv1(x)
         #out = conv_to_cim(x, self.conv1, permutation = 'random', num_sec=27, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((27,8)))).tolist(), opt=0)
-        out = conv_to_cim(x, self.conv1, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((27,8)))).tolist(), opt=0)
+        out = conv_to_cim(x, self.conv1, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn1(out)
         out = self.relu1(out)
         out1 = out.detach()
 
         #out = self.conv2(out)
         #out = conv_to_cim(out, self.conv2, permutation = 'random', num_sec=576, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((576,8)))).tolist(), opt=0)
-        out = conv_to_cim(out, self.conv2, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((576,8)))).tolist(), opt=0)
+        out = conv_to_cim(out, self.conv2, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn2(out)
         out = self.relu2(out)
         
         #out = self.conv3(out)
         #out = conv_to_cim(out, self.conv3, permutation = 'random', num_sec=576, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((576,8)))).tolist(), opt=0)
-        out = conv_to_cim(out, self.conv3, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((576,8)))).tolist(), opt=0)
+        out = conv_to_cim(out, self.conv3, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn3(out)
         out_shortcut = self.seq1(out1)
         out = out + out_shortcut
@@ -297,18 +304,18 @@ class ResNetMod(nn.Module):
 
         #out = self.conv4(out)
         #out = conv_to_cim(out, self.conv4, permutation = 'random', num_sec=576, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((576,8)))).tolist(), opt=0)
-        out = conv_to_cim(out, self.conv4, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((576,8)))).tolist(), opt=0)
+        out = conv_to_cim(out, self.conv4, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn4(out)
         out = self.relu4(out)
 
         #out = self.conv5(out)
         #out = conv_to_cim(out, self.conv5, permutation = 'random', num_sec=1152, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((1152,8)))).tolist(), opt=0)
-        out = conv_to_cim(out, self.conv5, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((1152,8)))).tolist(), opt=0)
+        out = conv_to_cim(out, self.conv5, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn5(out)
 
         #out_shortcut = self.conv6(out2)
         #out_shortcut = conv_to_cim(out2, self.conv6, permutation = 'random', num_sec=64, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((64,8)))).tolist(), opt=0)
-        out_shortcut = conv_to_cim(out2, self.conv6, permutation = 'random', num_sec=8, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((64,8)))).tolist(), opt=0)
+        out_shortcut = conv_to_cim(out2, self.conv6, permutation = 'random', num_sec=8, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out_shortcut = self.bn6(out_shortcut)
         out = out + out_shortcut
         out = self.relu6(out)
@@ -317,17 +324,17 @@ class ResNetMod(nn.Module):
 
         #out = self.conv7(out)
         #out = conv_to_cim(out, self.conv7, permutation = 'random', num_sec=1152, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((1152,8)))).tolist(), opt=0)
-        out = conv_to_cim(out, self.conv7, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((1152,8)))).tolist(), opt=0)
+        out = conv_to_cim(out, self.conv7, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn7(out)
         out = self.relu7(out)
         
         #out = self.conv8(out)
         #out = conv_to_cim(out, self.conv8, permutation = 'random', num_sec=2304, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((2304,8)))).tolist(), opt=0)
-        out = conv_to_cim(out, self.conv8, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((2304,8)))).tolist(), opt=0)
+        out = conv_to_cim(out, self.conv8, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn8(out)
         #out_shortcut = self.conv9(out3)
         #out_shortcut = conv_to_cim(out3, self.conv9, permutation = 'random', num_sec=256, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((256,8)))).tolist(), opt=0)
-        out_shortcut = conv_to_cim(out3, self.conv9, permutation = 'random', num_sec=8, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((256,8)))).tolist(), opt=0)
+        out_shortcut = conv_to_cim(out3, self.conv9, permutation = 'random', num_sec=8, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out_shortcut = self.bn9(out_shortcut)
         out = out + out_shortcut
         out = self.relu9(out)
@@ -336,17 +343,17 @@ class ResNetMod(nn.Module):
 
         #out = self.conv10(out)
         #out = conv_to_cim(out, self.conv10, permutation = 'random', num_sec=2304, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((2304,8)))).tolist(), opt=0)
-        out = conv_to_cim(out, self.conv10, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((2304,8)))).tolist(), opt=0)
+        out = conv_to_cim(out, self.conv10, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn10(out)
         out = self.relu10(out)
         
         #out = self.conv11(out)
         #out = conv_to_cim(out, self.conv11, permutation = 'random', num_sec=4608, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((4608,8)))).tolist(), opt=0)
-        out = conv_to_cim(out, self.conv11, permutation = 'random', num_sec=9, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((4608,8)))).tolist(), opt=0)
+        out = conv_to_cim(out, self.conv11, permutation = 'random', num_sec=9, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out = self.bn11(out)
         #out_shortcut = self.conv12(out4)
         #out_shortcut = conv_to_cim(out4, self.conv12, permutation = 'random', num_sec=256, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((256,8)))).tolist(), opt=0)
-        out_shortcut = conv_to_cim(out4, self.conv12, permutation = 'random', num_sec=8, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((256,8)))).tolist(), opt=0)
+        out_shortcut = conv_to_cim(out4, self.conv12, permutation = 'random', num_sec=8, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         out_shortcut = self.bn12(out_shortcut)
         out = out + out_shortcut
         out = self.relu12(out)
@@ -355,6 +362,6 @@ class ResNetMod(nn.Module):
         out = out.view(out.size(0), -1)
         #out = self.linear(out)
         #out = fc_to_cim(out, self.linear, permutation = 'random', num_sec=512, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((512,8)))).tolist(), opt=0)
-        out = fc_to_cim(out, self.linear, permutation = 'random', num_sec=8, b_set = (np.multiply(np.array([8, 8, 8, 7, 5, 4, 2, 1]),np.ones((512,8)))).tolist(), opt=0)
+        out = fc_to_cim(out, self.linear, permutation = 'random', num_sec=8, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), opt=0)
         
         return out    

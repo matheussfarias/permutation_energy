@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='CIFAR10')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 args = parser.parse_args()
 
-device = 'cpu' if torch.cuda.is_available() else 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 best_acc = 0  # best test accuracy
 
 # Data
@@ -41,7 +41,7 @@ kwargs = {'num_workers': 2, 'pin_memory': True} if device=='cuda' else {}
 testset = torchvision.datasets.CIFAR10(
     root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(
-    testset, batch_size=100, shuffle=False, **kwargs)
+    testset, batch_size=50, shuffle=False, **kwargs)
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer',
            'dog', 'frog', 'horse', 'ship', 'truck')
@@ -60,7 +60,7 @@ if device == 'cuda':
 # Load checkpoint.
 print('==> Resuming from pretrained model..')
 assert os.path.isdir('pretrained'), 'Error: no pretrained directory found!'
-checkpoint = torch.load('./pretrained/resnet18.pth', map_location=device)
+checkpoint = torch.load('./pretrained/resnetmod.pth', map_location=device)
 if device == 'cpu':
     a = checkpoint['net'].copy()
     for key in a.keys():
