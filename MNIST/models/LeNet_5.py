@@ -222,23 +222,23 @@ class LeNet_5(nn.Module):
         """Forward propagation procedure"""
         #x = self.conv1(x)
         #x = conv_to_cim(x, self.conv1, num_sec=100, b_set = (8*np.ones((100,8))).tolist())
-        x = conv_to_cim(x, self.conv1, opt=0, permutation = 'random', num_sec=10, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), add_noise = 0, noise_gain = 0)
+        x = conv_to_cim(x, self.conv1, opt=0, permutation = 'random', num_sec=100, b_set = torch.FloatTensor([6, 6, 6, 6, 6, 6, 6, 6]).to(device), add_noise = 0, noise_gain = 0)
         x = self.relu1(x)
 
         #x = self.conv2(x)
         #x = conv_to_cim(x, self.conv2, num_sec=1000, b_set = (8*np.ones((1000,8))).tolist())
-        x = conv_to_cim(x, self.conv2, opt=0, permutation = 'random', num_sec=10, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), add_noise = 0, noise_gain = 0)
+        x = conv_to_cim(x, self.conv2, opt=0, permutation = 'random', num_sec=1000, b_set = torch.FloatTensor([6, 6, 6, 6, 6, 6, 6, 6]).to(device), add_noise = 0, noise_gain = 0)
         x = self.relu2(x)
         
         #x = self.conv3(x)
         #x = conv_to_cim(x, self.conv3, num_sec=500, b_set = (8*np.ones((500,8))).tolist())
-        x = conv_to_cim(x, self.conv3, opt=0, permutation = 'random', num_sec=10, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), add_noise = 0, noise_gain = 0)
+        x = conv_to_cim(x, self.conv3, opt=0, permutation = 'random', num_sec=500, b_set = torch.FloatTensor([6, 6, 6, 6, 6, 6, 6, 6]).to(device), add_noise = 0, noise_gain = 0)
         x = self.relu3(x)
 
         x = x.reshape(-1, 720)
         #x = self.fc1(x)
         #x = fc_to_cim(x, self.fc1, num_sec=720, b_set = (8*np.ones((720,8))).tolist())
-        x = fc_to_cim(x, self.fc1, opt=0, permutation = 'random', num_sec=10, b_set = torch.FloatTensor([8, 8, 8, 7, 5, 4, 2, 1]).to(device), add_noise = 0, noise_gain = 0)
+        x = fc_to_cim(x, self.fc1, opt=0, permutation = 'random', num_sec=720, b_set = torch.FloatTensor([6, 6, 6, 6, 6, 6, 6, 6]).to(device), add_noise = 0, noise_gain = 0)
         return x
 
     def forward_a(self, x):

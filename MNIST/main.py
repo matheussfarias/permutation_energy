@@ -170,3 +170,16 @@ if __name__=='__main__':
 
     print('Accuracy: ' + str(acc) + '%\n' + 'Energy: ' + str(int(energy)) + '\n')
 
+    # read energy
+    f=open('./results/n_adcs.txt','r')
+    lines = np.genfromtxt('./results/n_adcs.txt', delimiter=',')
+
+    reading=[]
+    for i in range(len(lines)):
+        reading.append(lines[i][0])
+    if len(lines) != 10000:
+        print(len(lines))
+        print('Double check the number of lines in ADCs')
+    adcs= np.sum(reading)
+    f.close()
+    print(adcs)
