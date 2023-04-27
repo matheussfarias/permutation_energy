@@ -52,6 +52,7 @@ print('==> Building model..')
 #net = ResNet18()
 #net = SimpleDLA()
 net = ResNetMod()
+#net = VGG()
 net = net.to(device)
 if device == 'cuda':
     net = torch.nn.DataParallel(net)
@@ -60,6 +61,7 @@ if device == 'cuda':
 # Load checkpoint.
 print('==> Resuming from pretrained model..')
 assert os.path.isdir('pretrained'), 'Error: no pretrained directory found!'
+print('oi')
 checkpoint = torch.load('./pretrained/resnetmod.pth', map_location=device)
 if device == 'cpu':
     a = checkpoint['net'].copy()
@@ -118,4 +120,32 @@ f.write("\n")
 f.close()
 
 print('Accuracy: ' + str(acc) + '%\n' + 'Energy: ' + str(int(energy)) + '\n')
+
+# read energy
+f=open('./results/n_adcs.txt','r')
+lines = np.genfromtxt('./results/n_adcs.txt', delimiter=',')
+
+reading=[]
+for i in range(len(lines)):
+    reading.append(lines[i][0])
+if len(lines) != 10000:
+    print(len(lines))
+    print('Double check the number of lines in ADCs')
+adcs= np.sum(reading)
+f.close()
+print(adcs)
+
+# read energy
+f=open('./results/noise.txt','r')
+lines = np.genfromtxt('./results/noise.txt', delimiter=',')
+
+reading=[]
+for i in range(len(lines)):
+    reading.append(lines[i][0])
+if len(lines) != 10000:
+    print(len(lines))
+    print('Double check the number of lines in noise')
+noise= np.sum(reading)
+f.close()
+print(noise)
 

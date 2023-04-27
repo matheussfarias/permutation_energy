@@ -31,7 +31,7 @@ def count_parameters(model):
     print(f"Total Number of Trainable Modules: {modules}")
     return total_params
 
-def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
+def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain, num_sec, apply_noise_red):
     M = A.shape[0]
     K = A.shape[1]
     N = B.shape[1]
@@ -70,9 +70,10 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         B_signs_pim = B_signs_pim.reshape(B_pim.shape)
         B_pim_signed = torch.mul(B_pim, B_signs_pim)
 
-        A_final = torch.transpose(A_final, 1, 2)
-        C_wait = torch.einsum('bij,bik->bijk', A_final, B_pim_signed)
-        A_final = torch.transpose(A_final, 1, 2)
+        if add_noise==0:
+            A_final = torch.transpose(A_final, 1, 2)
+            C_wait = torch.einsum('bij,bik->bijk', A_final, B_pim_signed)
+            A_final = torch.transpose(A_final, 1, 2)
 
     else:
         A_final = A
@@ -87,6 +88,27 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
         B_signs_pim = B_signs_pim.reshape(B_signs_pim.shape[0],B_signs_pim.shape[1],1).repeat(1,1,q).flatten()
         B_signs_pim = B_signs_pim.reshape(B_pim.shape)
         B_pim_signed = torch.mul(B_pim, B_signs_pim)
+
+        sections=[]
+        B_pim_signed_edit = torch.reshape(B_pim_signed, (N, num_sec, int(K/num_sec), q)).clone()
+        noise_value=0
+
+        x = torch.arange(start=B_pim_signed_edit.shape[2], end=0, step=-1)
+        y = torch.arange(B_pim_signed_edit.shape[3])
+
+        manhattan = (x[...,None] + y[..., None, :]).to(device)
+        manhattan = manhattan.expand(B_pim_signed_edit.shape)
+
+        posi=torch.mul(manhattan, torch.abs(B_pim_signed_edit))
+        quant = (posi>0).type(torch.int)
+        noise_value = torch.sum(posi)/(torch.sum(quant)+1e-12)
+
+        if add_noise:
+            sign = torch.rand(posi.shape)
+            unc = (-1)**((sign > 0.5).type(torch.int))*noise_gain
+            deltar=torch.mul(unc, posi)
+            B_pim_signed_edit += deltar
+            B_pim_signed = torch.reshape(B_pim_signed_edit, (N, K, q))
 
         A_final = torch.transpose(A_final, 0, 1)
         C_wait = torch.einsum('ij,bik->bijk', A_final, B_pim_signed)
@@ -103,54 +125,63 @@ def compute_tiles_nn(A, B, B_signs, t, add_noise, noise_gain):
     s_n[-1] -= zeros
     s_n = s_n.T
 
-    noise_value = 0
-    if noise_value != 0:
+    if apply_noise_red:
         if t!='random':
             sections=[]
             for j in range(N):
                 sec=[]
                 for i in range (q+1):
-                    if i ==q:
-                        sec.append(B_pim_signed[j][int(torch.sum(s_n[j][:i])):])
-                        break
                     sec.append(B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))])
                 sections.append(sec)
-            noise_value=0
-            for j in range(N):
+                noise_value=0
                 for i in range(q+1):
-                    if sections[j][i].size()[0]!=0:
-                        temp = torch.zeros(sections[j][i].shape).to(device)
-                        for a in range(temp.size()[0]):
-                            for b in range(temp.size()[1]):
-                                temp[a][b]=b-a+temp.size()[0]
+                    x = torch.arange(start=sections[j][i].shape[0], end=0, step=-1).to(device)
+                    y = torch.arange(sections[j][i].shape[1]).to(device)
+                    manhattan = x[...,None] + y[..., None, :]
+                    posi_1 = (torch.mul(abs(sections[j][i]),manhattan)-(q-i)).to(device)
 
-                        posi_1 = (torch.mul(abs(sections[j][i]),temp)-(q-i)).to(device)
-                        posi_2 = (posi_1>=0).type(torch.int)
-                        noise = abs(torch.mul(posi_1, posi_2))
-                        noise_value += torch.sum(noise/(torch.sum(abs(sections[j][i]))+1e-12))
-                        if add_noise:
-                            sign = torch.rand(noise.shape).to(device)
-                            B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))] += (-1)**((sign > 0.5).type(torch.int8))*noise_gain*noise
-        else:
-            num_sections = 2
-            sections=[]
-            B_pim_signed_edit = torch.reshape(B_pim_signed, (N, num_sections, int(K/num_sections), q))
-            noise_value=0
-            for j in range(N):
-                for i in range(num_sections):
-                    temp = torch.zeros(B_pim_signed_edit[j][i].shape).to(device)
-                    for a in range(temp.size()[0]):
-                        for b in range(temp.size()[1]):
-                            temp[a][b]=b-a+temp.size()[0]
-                    posi_1 = torch.mul(abs(B_pim_signed_edit[j][i]),temp)
                     posi_2 = (posi_1>=0).type(torch.int)
-                    noise = abs(torch.mul(posi_1, posi_2))
-                    noise_value += torch.sum(noise/(torch.sum(abs(B_pim_signed_edit[j][i])))+1e-12)
+                    ord = torch.mul(posi_2, torch.arange(q).to(device))
+                    ord = torch.argsort(torch.sum(ord, axis=1))
+                    posi_2=posi_2[ord]
+                    sections[j][i] = sections[j][i][ord]
+                    posi_1_new=(torch.mul(abs(sections[j][i]),manhattan)-(q-i)).to(device)
+                    noise = abs(torch.mul(posi_1_new, posi_2))
+
+                    noise_value += torch.sum(noise)/(torch.sum(abs(sections[j][i]))+1e-12)
+                    temp_a = A_final[j,:,int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))].T[ord]
+
                     if add_noise:
-                        sign = torch.rand(noise.shape)
-                        B_pim_signed_edit[j][i] = B_pim_signed_edit[j][i] + (-1)**((sign > 0.5).type(torch.int))*noise_gain*noise
-                    
-            B_pim_signed = torch.reshape(B_pim_signed_edit, (N, K, q))
+                        sign = torch.rand(noise.shape).to(device)
+                        A_final[j,:,int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))] = temp_a.T
+                        B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))] = sections[j][i] + (-1)**((sign > 0.5).type(torch.int))*noise_gain*noise
+
+            A_final = torch.transpose(A_final, 1, 2)
+            C_wait = torch.einsum('bij,bik->bijk', A_final, B_pim_signed)
+            A_final = torch.transpose(A_final, 1, 2)
+    else:
+        if t!='random':
+            sections=[]
+            for j in range(N):
+                sec=[]
+                for i in range (q+1):
+                    sec.append(B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))])
+                sections.append(sec)
+                noise_value=0
+                for i in range(q+1):
+                    x = torch.arange(start=sections[j][i].shape[0], end=0, step=-1).to(device)
+                    y = torch.arange(sections[j][i].shape[1]).to(device)
+                    manhattan = x[...,None] + y[..., None, :]
+                    posi_1 = (torch.mul(abs(sections[j][i]),manhattan)).to(device)
+                    noise_value += torch.sum(posi_1)/(torch.sum(abs(sections[j][i]))+1e-12)
+                    if add_noise:
+                        sign = torch.rand(posi_1.shape).to(device)
+                        B_pim_signed[j][int(torch.sum(s_n[j][:i])):int(torch.sum(s_n[j][:(i+1)]))] = sections[j][i] + (-1)**((sign > 0.5).type(torch.int))*noise_gain*posi_1
+
+            A_final = torch.transpose(A_final, 1, 2)
+            C_wait = torch.einsum('bij,bik->bijk', A_final, B_pim_signed)
+            A_final = torch.transpose(A_final, 1, 2)
+
     return C_wait, B_pim_signed, A_final, 0, s, s_n, noise_value
 
 def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_n, opt):
@@ -195,7 +226,7 @@ def adc(A, B_digital, C_correct, v_ref, b, permutation, perc, num_sec, b_set, s_
     b_set = b_set.flatten()[:q]
     b_set = b_set.expand(sec.shape)
     energy = torch.sum(torch.mul(sec,torch.pow(2, b_set)))
-    n_adcs = torch.sum((sec>0).type(torch.int))
+    n_adcs = torch.sum((torch.mul(sec,b_set)>0).type(torch.int))
 
     digital_outputs = torch.zeros(digital_without_sign.shape).to(device)
     output_signs = (C_correct<0).type(torch.int)
@@ -331,7 +362,7 @@ def stochastic_rounding(x):
             f_x[i] = torch.ceil(f_x[i])
     return f_x.reshape(shape_prev)
 
-def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, add_noise, noise_gain):
+def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, add_noise, noise_gain, apply_noise_red):
     if prints:
         print('Starting CIMulator...\n')
     # dac settings
@@ -385,7 +416,7 @@ def cim(A, B, v_ref, d, q, b, permutation, prints, perc, num_sec, b_set, opt, ad
     # operating
     # actual MM
     t1 = time.perf_counter()
-    C_wait, B_new, A_new, means, s, s_n, noise = compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain)
+    C_wait, B_new, A_new, means, s, s_n, noise = compute_tiles_nn(A_analog, B_digital, B_signs, permutation, add_noise, noise_gain, num_sec, apply_noise_red)
     t2 = time.perf_counter()
     if prints:
         print('Time due to MM: ' + str(t2-t1))
